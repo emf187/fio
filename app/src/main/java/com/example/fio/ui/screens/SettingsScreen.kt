@@ -1,5 +1,6 @@
 package com.example.fio.ui.screens
 
+import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -34,8 +35,10 @@ fun SettingsScreen(repository: FioRepository) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     val settings by repository.settings.collectAsState()
+    val profileName by repository.profileName.collectAsState()
 
     // Local mutable state
+    var profileNameInput by remember(profileName) { mutableStateOf(profileName) }
     var apiKeyInput by remember { mutableStateOf(settings.aiApiKey) }
     var baseUrlInput by remember { mutableStateOf(settings.aiBaseUrl) }
     var modelNameInput by remember { mutableStateOf(settings.aiModelName) }
@@ -67,8 +70,8 @@ fun SettingsScreen(repository: FioRepository) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
                         text = if (mode == "EXPORT")
-                            "All notes, schedules, logs, and timestamps are serialized below. Copy and transfer to another device:"
-                        else "Paste the JSON backup string to restore all records:",
+                            "All books, documents data, reading progress, chat sessions, schedules, habits, goals, notes, sleep, and meals are serialized below. Copy and transfer to another device:"
+                        else "Paste the JSON backup string to restore all records, books, documents, and progress:",
                         color = colors.textSecondary,
                         fontSize = 12.sp
                     )
@@ -87,19 +90,41 @@ fun SettingsScreen(repository: FioRepository) {
                     )
 
                     if (mode == "EXPORT") {
-                        Button(
-                            onClick = {
-                                val json = repository.exportAllToJson()
-                                clipboardManager.setText(AnnotatedString(json))
-                                Toast.makeText(context, "Backup copied to clipboard", Toast.LENGTH_SHORT).show()
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = colors.surfaceElevated),
-                            shape = RoundedCornerShape(6.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(imageVector = Icons.Default.ContentCopy, contentDescription = null, tint = colors.primary, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Copy Full JSON to Clipboard", color = colors.primary, fontSize = 12.sp)
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = {
+                                    val json = repository.exportAllToJson()
+                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(Intent.EXTRA_SUBJECT, "Fio_Profile_Backup.json")
+                                        putExtra(Intent.EXTRA_TEXT, json)
+                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                    }
+                                    context.startActivity(Intent.createChooser(shareIntent, "Share Fio Profile via Wi-Fi / Quick Share"))
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
+                                shape = RoundedCornerShape(6.dp),
+                                modifier = Modifier.weight(1.2f)
+                            ) {
+                                Icon(imageVector = Icons.Default.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Wi-Fi Quick Share", color = Color.White, fontSize = 11.sp)
+                            }
+
+                            Button(
+                                onClick = {
+                                    val json = repository.exportAllToJson()
+                                    clipboardManager.setText(AnnotatedString(json))
+                                    Toast.makeText(context, "Backup copied to clipboard", Toast.LENGTH_SHORT).show()
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = colors.surfaceElevated),
+                                shape = RoundedCornerShape(6.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(imageVector = Icons.Default.ContentCopy, contentDescription = null, tint = colors.primary, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Copy JSON", color = colors.primary, fontSize = 11.sp)
+                            }
                         }
                     }
                 }
@@ -145,6 +170,54 @@ fun SettingsScreen(repository: FioRepository) {
             Column {
                 Text("Settings & Customization", color = colors.textPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 Text("Provider-agnostic AI, themes, lockdown rules, and offline data sync", color = colors.textMuted, fontSize = 11.sp)
+            }
+        }
+
+        // --- 1b. User Profile & Identity ---
+        item {
+            FioCard(
+                backgroundColor = colors.surface,
+                borderColor = colors.border,
+                padding = PaddingValues(16.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(imageVector = Icons.Default.Person, contentDescription = null, tint = colors.primary, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Profile Name & Identity", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Displayed across your personal dashboard and exported with all books, documents, and progress.",
+                    color = colors.textMuted,
+                    fontSize = 11.sp
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = profileNameInput,
+                    onValueChange = { profileNameInput = it },
+                    label = { Text("Profile Name", color = colors.textMuted) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("profile_name_settings_input"),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = colors.primary,
+                        unfocusedBorderColor = colors.border,
+                        focusedTextColor = colors.textPrimary,
+                        unfocusedTextColor = colors.textPrimary
+                    )
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Button(
+                    onClick = {
+                        val trimmed = profileNameInput.trim().ifEmpty { "User" }
+                        repository.setProfileName(trimmed)
+                        Toast.makeText(context, "Profile name updated to $trimmed", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
+                    shape = RoundedCornerShape(6.dp),
+                    modifier = Modifier.fillMaxWidth().testTag("save_profile_name_button")
+                ) {
+                    Text("Update Profile Name", color = Color.White)
+                }
             }
         }
 
@@ -374,7 +447,7 @@ fun SettingsScreen(repository: FioRepository) {
             ) {
                 Text("Data & Privacy (Offline-First)", color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(6.dp))
-                Text("No account or cloud dependency. All notes, logs, and timestamps remain local. Export and import over Wi-Fi/file:", color = colors.textMuted, fontSize = 11.sp)
+                Text("No account or cloud dependency. All your books, documents, reading progress, chat sessions, notes, logs, and profile remain local. Export and import over Wi-Fi/file:", color = colors.textMuted, fontSize = 11.sp)
                 Spacer(modifier = Modifier.height(10.dp))
 
                 Row(
@@ -405,6 +478,35 @@ fun SettingsScreen(repository: FioRepository) {
                         Text("Import Backup", color = colors.textPrimary, fontSize = 12.sp)
                     }
                 }
+            }
+        }
+
+        // --- 6. App Source Code & Export Options ---
+        item {
+            FioCard(
+                backgroundColor = colors.surface,
+                borderColor = colors.border,
+                padding = PaddingValues(16.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(imageVector = Icons.Default.Code, contentDescription = null, tint = colors.primary, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("App Source Code & Installation", color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "100% open native Android Kotlin codebase. You can export the full source code anytime:",
+                    color = colors.textMuted,
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "• Download ZIP: In the Google AI Studio menu (top bar), click 'Export project as ZIP' to download the entire Android project.\n• GitHub Sync: Export directly to your GitHub repository.\n• APK Installation: Download the built debug APK to install directly on your tablet or phone.",
+                    color = colors.textSecondary,
+                    fontSize = 11.sp,
+                    lineHeight = 16.sp
+                )
             }
         }
     }

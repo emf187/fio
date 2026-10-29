@@ -45,6 +45,7 @@ fun DashboardScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
+    val profileName by repository.profileName.collectAsState()
     val events by repository.events.collectAsState()
     val habits by repository.habits.collectAsState()
     val goals by repository.goals.collectAsState()
@@ -145,8 +146,67 @@ fun DashboardScreen(
         contentPadding = PaddingValues(vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // --- 0. Profile Banner (Personal Name & Offline Storage) ---
+        item(key = "profile_header_card") {
+            FioCard(
+                backgroundColor = colors.surface,
+                borderColor = colors.border,
+                padding = PaddingValues(14.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onNavigate(FioScreen.SETTINGS) }
+                    .testTag("profile_header_card")
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(CircleShape)
+                            .background(colors.primaryContainer)
+                            .border(1.5.dp, colors.primary, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = profileName.take(1).uppercase().ifEmpty { "F" },
+                            color = colors.primary,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = if (profileName.isNotBlank()) profileName else "My Dashboard",
+                            color = colors.textPrimary,
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "All books, documents & progress stored offline",
+                            color = colors.textMuted,
+                            fontSize = 11.sp
+                        )
+                    }
+                    IconButton(
+                        onClick = { onNavigate(FioScreen.SETTINGS) },
+                        modifier = Modifier.testTag("edit_profile_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Edit Profile Name in Settings",
+                            tint = colors.textSecondary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+        }
+
         // --- 1. Life Score Banner ---
-        item {
+        item(key = "life_score_card") {
             FioCard(
                 backgroundColor = colors.surface,
                 borderColor = colors.border,
@@ -163,7 +223,7 @@ fun DashboardScreen(
                     Column(modifier = Modifier.weight(1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = "Today's Life Score",
+                                text = if (profileName.isNotBlank()) "$profileName's Life Score" else "Today's Life Score",
                                 color = colors.textSecondary,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Medium
@@ -581,45 +641,51 @@ fun DashboardScreen(
             }
         }
 
-        items(habits) { habit ->
-            val todayStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
-            val isCompleted = habit.completedDates.contains(todayStr)
+        if (habits.isEmpty()) {
+            item {
+                Text("No habits added yet. Tap '+ Habit' in Habits & Goals or ask Wingman to create one.", color = colors.textMuted, fontSize = 12.sp)
+            }
+        } else {
+            items(habits) { habit ->
+                val todayStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
+                val isCompleted = habit.completedDates.contains(todayStr)
 
-            FioCard(
-                backgroundColor = colors.surface,
-                borderColor = if (isCompleted) colors.primary.copy(alpha = 0.4f) else colors.border,
-                padding = PaddingValues(10.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { repository.toggleHabitToday(habit.id) }
-                    .testTag("habit_item_${habit.id}")
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
+                FioCard(
+                    backgroundColor = colors.surface,
+                    borderColor = if (isCompleted) colors.primary.copy(alpha = 0.4f) else colors.border,
+                    padding = PaddingValues(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { repository.toggleHabitToday(habit.id) }
+                        .testTag("habit_item_${habit.id}")
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(24.dp)
-                            .clip(CircleShape)
-                            .background(if (isCompleted) colors.primary else Color.Transparent)
-                            .border(1.dp, if (isCompleted) colors.primary else colors.border, CircleShape),
-                        contentAlignment = Alignment.Center
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        if (isCompleted) {
-                            Icon(imageVector = Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(24.dp)
+                                .clip(CircleShape)
+                                .background(if (isCompleted) colors.primary else Color.Transparent)
+                                .border(1.dp, if (isCompleted) colors.primary else colors.border, CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (isCompleted) {
+                                Icon(imageVector = Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            }
                         }
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(text = habit.name, color = colors.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                        if (habit.description.isNotBlank()) {
-                            Text(text = habit.description, color = colors.textMuted, fontSize = 10.sp)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = habit.name, color = colors.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                            if (habit.description.isNotBlank()) {
+                                Text(text = habit.description, color = colors.textMuted, fontSize = 10.sp)
+                            }
                         }
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(imageVector = Icons.Default.LocalFireDepartment, contentDescription = null, tint = colors.warning, modifier = Modifier.size(16.dp))
-                        Text(text = "${habit.streak}d", color = colors.warning, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(imageVector = Icons.Default.LocalFireDepartment, contentDescription = null, tint = colors.warning, modifier = Modifier.size(16.dp))
+                            Text(text = "${habit.streak}d", color = colors.warning, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
@@ -630,32 +696,38 @@ fun DashboardScreen(
             Text("Active Goals", color = colors.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
         }
 
-        items(goals) { goal ->
-            val progressPercent = ((goal.currentValue / goal.targetValue) * 100).coerceIn(0.0, 100.0)
-            FioCard(
-                backgroundColor = colors.surface,
-                borderColor = colors.border,
-                padding = PaddingValues(12.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+        if (goals.isEmpty()) {
+            item {
+                Text("No goals set yet. Set targets in Habits & Goals or ask Wingman.", color = colors.textMuted, fontSize = 12.sp)
+            }
+        } else {
+            items(goals) { goal ->
+                val progressPercent = ((goal.currentValue / goal.targetValue) * 100).coerceIn(0.0, 100.0)
+                FioCard(
+                    backgroundColor = colors.surface,
+                    borderColor = colors.border,
+                    padding = PaddingValues(12.dp),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(text = goal.title, color = colors.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                    Text(text = "${goal.currentValue.toInt()} / ${goal.targetValue.toInt()} ${goal.unit}", color = colors.textSecondary, fontSize = 11.sp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(text = goal.title, color = colors.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Text(text = "${goal.currentValue.toInt()} / ${goal.targetValue.toInt()} ${goal.unit}", color = colors.textSecondary, fontSize = 11.sp)
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    LinearProgressIndicator(
+                        progress = { (progressPercent / 100.0).toFloat() },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp)),
+                        color = colors.primary,
+                        trackColor = colors.surfaceElevated
+                    )
                 }
-                Spacer(modifier = Modifier.height(6.dp))
-                LinearProgressIndicator(
-                    progress = { (progressPercent / 100.0).toFloat() },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(6.dp)
-                        .clip(RoundedCornerShape(3.dp)),
-                    color = colors.primary,
-                    trackColor = colors.surfaceElevated
-                )
             }
         }
     }

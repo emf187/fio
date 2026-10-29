@@ -14,7 +14,7 @@ import kotlin.math.roundToInt
 
 class FioRepository(private val context: Context) {
     private val prefs: SharedPreferences =
-        context.getSharedPreferences("fio_storage", Context.MODE_PRIVATE)
+        context.getSharedPreferences("fio_storage_v2", Context.MODE_PRIVATE)
 
     private val _events = MutableStateFlow<List<ScheduleEvent>>(emptyList())
     val events: StateFlow<List<ScheduleEvent>> = _events.asStateFlow()
@@ -49,318 +49,114 @@ class FioRepository(private val context: Context) {
     private val _sessionLogs = MutableStateFlow<List<FocusSessionLog>>(emptyList())
     val sessionLogs: StateFlow<List<FocusSessionLog>> = _sessionLogs.asStateFlow()
 
+    private val _chatHistory = MutableStateFlow<List<ChatMessage>>(emptyList())
+    val chatHistory: StateFlow<List<ChatMessage>> = _chatHistory.asStateFlow()
+
     private val _settings = MutableStateFlow(AppSettings())
     val settings: StateFlow<AppSettings> = _settings.asStateFlow()
+
+    private val _profileName = MutableStateFlow("")
+    val profileName: StateFlow<String> = _profileName.asStateFlow()
 
     init {
         loadData()
     }
 
     private fun loadData() {
-        val hasData = prefs.getBoolean("has_initialized_data", false)
-        if (!hasData) {
-            seedInitialData()
-            saveAll()
-            prefs.edit().putBoolean("has_initialized_data", true).apply()
-        } else {
-            loadFromDisk()
+        _profileName.value = prefs.getString("profile_name", "") ?: ""
+        val json = prefs.getString("backup_json", null)
+        if (!json.isNullOrBlank()) {
+            importFromJson(json)
         }
-    }
-
-    private fun seedInitialData() {
-        val now = System.currentTimeMillis()
-        val calendar = Calendar.getInstance()
-        calendar.set(Calendar.HOUR_OF_DAY, 0)
-        calendar.set(Calendar.MINUTE, 0)
-        calendar.set(Calendar.SECOND, 0)
-        val todayStart = calendar.timeInMillis
-
-        // 3 Initial Courses across Study, Leisure, Research
-        val c1 = CourseSection(id = "course_sys", name = "Computer Systems & OS", sectionType = SectionType.STUDY, description = "Memory hierarchy, caches, processes, and kernel architecture.")
-        val c2 = CourseSection(id = "course_phil", name = "Stoic Philosophy & Meditations", sectionType = SectionType.LEISURE, description = "Classical texts on focus, inner peace, and discipline.")
-        val c3 = CourseSection(id = "course_cog", name = "Cognitive Science & Spaced Repetition", sectionType = SectionType.RESEARCH, description = "Neuroscience of active recall, memory consolidation, and sleep.")
-        _courses.value = listOf(c1, c2, c3)
-
-        // Seed Documents
-        val doc1 = StudyDocument(
-            id = "doc_os_cache",
-            courseId = c1.id,
-            title = "Virtual Memory and Page Replacement Algorithms",
-            author = "Andrew S. Tanenbaum",
-            format = "TXT",
-            content = """# Virtual Memory & Paging
-
-Virtual memory is a storage allocation scheme in which secondary memory can be addressed as though it were part of main memory. The addresses a program may use to reference memory are distinguished from the addresses the memory system uses to identify physical storage sites.
-
-## Paging Principles
-In paging, the virtual address space is divided into fixed-size units called pages. The corresponding units in physical memory are called page frames. Pages and page frames are always exactly the same size, typically 4 KB.
-
-### Page Faults
-When a process references a page not present in RAM, the Memory Management Unit (MMU) raises a trap to the operating system known as a page fault. The OS selects a victim page, writes it to disk if dirty, loads the desired page from disk, and resumes execution.
-
-### Optimal Page Replacement (OPT)
-The optimal algorithm replaces the page that will not be used for the longest period in the future. While impossible to implement practically (as it requires future knowledge), it serves as the theoretical benchmark.
-
-### Least Recently Used (LRU)
-LRU approximates OPT by replacing the page that has not been referenced for the longest period. Implementation typically utilizes a doubly-linked list or hardware timestamp counter.
-""".trimIndent(),
-            chunks = listOf(
-                DocumentChunk("chunk_1", "Virtual Memory Overview", "Virtual memory allows addressing secondary storage as main memory. Pages (virtual) map to frames (physical)."),
-                DocumentChunk("chunk_2", "Page Faults", "MMU raises a page fault trap when a page is not loaded. OS handles eviction and loading from disk."),
-                DocumentChunk("chunk_3", "Replacement Algorithms", "LRU replaces the oldest unused page. OPT is theoretical benchmark.")
-            ),
-            readingProgressPercent = 35
-        )
-
-        val doc2 = StudyDocument(
-            id = "doc_meditations",
-            courseId = c2.id,
-            title = "Meditations: Book IV",
-            author = "Marcus Aurelius",
-            format = "EPUB",
-            content = """# Meditations - Book IV
-
-Men seek retreats for themselves, houses in the country, seashores, and mountains; and thou too art wont to desire such things very much. But this is altogether a mark of the most common sort of men, for it is in thy power whenever thou shalt choose to retire into thyself.
-
-For nowhere either with more quiet or more freedom from trouble does a man retire than into his own soul, particularly when he has within him such thoughts that by looking into them he is immediately in perfect tranquility; and I affirm that tranquility is nothing else than the good ordering of the mind.
-
-Constantly then give to thyself this retreat, and renew thyself; and let thy rules be short and fundamental, which as soon as they are thought of will serve to filter out all sorrow, and send thee back without any discontent to the things to which thou must return.
-""".trimIndent(),
-            chunks = listOf(
-                DocumentChunk("chunk_m1", "The Inner Citadel", "Retreat within one's own soul rather than physical retreats. Tranquility is the good ordering of the mind.")
-            ),
-            readingProgressPercent = 60
-        )
-        _documents.value = listOf(doc1, doc2)
-
-        // Seed Flashcards
-        _flashcards.value = listOf(
-            Flashcard(courseId = c1.id, front = "What is a Page Fault?", back = "An interrupt raised by the MMU when a process accesses a page not mapped in physical RAM.", timesReviewed = 4, correctCount = 4),
-            Flashcard(courseId = c1.id, front = "Explain the difference between Paging and Segmentation.", back = "Paging uses fixed-sized blocks (frames). Segmentation uses variable-sized logical units (e.g., functions, data segments).", timesReviewed = 3, correctCount = 2),
-            Flashcard(courseId = c1.id, front = "Why is the Optimal Page Replacement (OPT) algorithm impossible in real systems?", back = "It requires knowing future memory reference strings in advance.", timesReviewed = 2, correctCount = 2),
-            Flashcard(courseId = c3.id, front = "What is Spaced Repetition?", back = "A learning technique where reviews are spaced at increasing intervals according to the forgetting curve.", timesReviewed = 5, correctCount = 5)
-        )
-
-        // Seed Tutor Past Questions and Session
-        _tutorSessions.value = listOf(
-            TutorSession(
-                courseId = c1.id,
-                questionPrompt = "A system has 4 page frames. Initially empty. Page references: 1, 2, 3, 4, 1, 2, 5, 1, 2, 3, 4, 5. Calculate page faults under LRU.",
-                studentAnswer = "Frames fill up with 1,2,3,4 (4 faults). Next 1 and 2 hit. When 5 arrives, 3 is the least recently used, so 5 replaces 3 (fault 5). Next 1 and 2 hit. Then 3 comes in, replacing 4 (fault 6). Total is 8 faults.",
-                aiGrade = "A",
-                scorePercentage = 95,
-                feedback = "Excellent step-by-step trace of LRU queue replacement. Correct identification of least recently used frames and total fault count.",
-                weakTopics = listOf("Page replacement corner cases"),
-                recommendedRevision = "Practice FIFO Belady's Anomaly and Clock Algorithm variants."
-            )
-        )
-
-        // Seed Today's Events (Calendar & Planner)
-        _events.value = listOf(
-            ScheduleEvent(
-                title = "Virtual Memory & Paging Review",
-                description = "Focus on LRU algorithm and dirty page writebacks",
-                startTimeMillis = todayStart + (9 * 3600 * 1000L),
-                endTimeMillis = todayStart + (10 * 3600 * 1000L) + (30 * 60 * 1000L),
-                type = EventType.STUDY,
-                courseId = c1.id,
-                isCompleted = true
-            ),
-            ScheduleEvent(
-                title = "Afternoon Rest & Mindful Nap",
-                description = "Dedicated rest block - disconnect and reset",
-                startTimeMillis = todayStart + (14 * 3600 * 1000L),
-                endTimeMillis = todayStart + (14 * 3600 * 1000L) + (40 * 60 * 1000L),
-                type = EventType.REST,
-                isCompleted = true
-            ),
-            ScheduleEvent(
-                title = "Evening Gym & Strength Session",
-                description = "Compound movements: Deadlifts & Upper Body pull",
-                startTimeMillis = todayStart + (17 * 3600 * 1000L),
-                endTimeMillis = todayStart + (18 * 3600 * 1000L) + (15 * 60 * 1000L),
-                type = EventType.GYM,
-                isCompleted = false
-            ),
-            ScheduleEvent(
-                title = "Marcus Aurelius Meditations Reading",
-                description = "Book IV study session with annotations",
-                startTimeMillis = todayStart + (20 * 3600 * 1000L),
-                endTimeMillis = todayStart + (21 * 3600 * 1000L),
-                type = EventType.STUDY,
-                courseId = c2.id,
-                isCompleted = false
-            )
-        )
-
-        // Seed Habits
-        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(now))
-        _habits.value = listOf(
-            HabitItem(name = "Deep Work (2 Hours)", description = "Uninterrupted focus with lockdown mode", streak = 6, bestStreak = 14, completedDates = listOf(todayStr)),
-            HabitItem(name = "Active Reading (30 min)", description = "Annotate and extract [[concepts]] into notes", streak = 4, bestStreak = 9, completedDates = listOf(todayStr)),
-            HabitItem(name = "Daily Movement (Gym/Jog)", description = "At least 30 minutes cardio or resistance", streak = 11, bestStreak = 18, completedDates = emptyList()),
-            HabitItem(name = "Night Wind-down (No screens 30m)", description = "Sleep hygiene preparation", streak = 5, bestStreak = 12, completedDates = emptyList())
-        )
-
-        // Seed Goals
-        _goals.value = listOf(
-            GoalItem(title = "Complete Operating Systems Module", category = "Study", targetValue = 100.0, currentValue = 72.0, unit = "%"),
-            GoalItem(title = "Read 5 Philosophical Works", category = "Leisure", targetValue = 5.0, currentValue = 3.0, unit = "books"),
-            GoalItem(title = "Maintain 8h Sleep Average", category = "Health", targetValue = 8.0, currentValue = 7.7, unit = "hrs/night")
-        )
-
-        // Seed Sleep logs
-        val yesterday = todayStart - (24 * 3600 * 1000L)
-        _sleepLogs.value = listOf(
-            SleepEntry(
-                type = SleepType.NIGHT,
-                startTimeMillis = yesterday + (23 * 3600 * 1000L),
-                endTimeMillis = todayStart + (7 * 3600 * 1000L) + (15 * 60 * 1000L),
-                qualityRating = 5,
-                loggedAtMillis = todayStart + (7 * 3600 * 1000L) + (20 * 60 * 1000L)
-            ),
-            SleepEntry(
-                type = SleepType.NAP,
-                startTimeMillis = todayStart + (14 * 3600 * 1000L),
-                endTimeMillis = todayStart + (14 * 3600 * 1000L) + (35 * 60 * 1000L),
-                qualityRating = 4,
-                loggedAtMillis = todayStart + (14 * 3600 * 1000L) + (40 * 60 * 1000L)
-            )
-        )
-
-        // Seed Meals
-        _mealLogs.value = listOf(
-            MealEntry(
-                timestampMillis = todayStart + (8 * 3600 * 1000L) + (15 * 60 * 1000L),
-                note = "Breakfast: Oats & Green tea",
-                loggedAtMillis = todayStart + (8 * 3600 * 1000L) + (16 * 60 * 1000L)
-            ),
-            MealEntry(
-                timestampMillis = todayStart + (13 * 3600 * 1000L),
-                note = "Lunch: Rice bowl with avocado and eggs",
-                loggedAtMillis = todayStart + (13 * 3600 * 1000L) + (5 * 60 * 1000L)
-            )
-        )
-
-        // Seed Notes (Obsidian markdown with [[links]] and #tags)
-        _notes.value = listOf(
-            NoteItem(
-                title = "Virtual Memory Concepts",
-                content = """# Virtual Memory Concepts
-Linked to course: [[Computer Systems & OS]]
-Tags: #cs #operating-systems #memory
-
-Virtual memory decouples the programmer's view of memory from physical RAM.
-See also: [[Page Replacement Algorithms]] and [[Marcus Aurelius Meditations]].
-
-### Key Advantages
-- Larger address space than physical RAM.
-- Protection through hardware segment/page flags.
-- Efficient memory sharing between processes.
-
-> "A process believes it owns the entire universe of memory."
-""".trimIndent(),
-                tags = listOf("cs", "operating-systems", "memory"),
-                createdAtMillis = todayStart - (48 * 3600 * 1000L),
-                updatedAtMillis = todayStart - (2 * 3600 * 1000L)
-            ),
-            NoteItem(
-                title = "Page Replacement Algorithms",
-                content = """# Page Replacement Algorithms
-Related: [[Virtual Memory Concepts]]
-Tags: #algorithms #caching
-
-When a page fault occurs, an existing page frame must be chosen for replacement.
-
-### Algorithms:
-1. **FIFO**: Simplest, but suffers from Belady's Anomaly.
-2. **LRU**: Least Recently Used. Stack/linked list tracking.
-3. **Clock (Second Chance)**: Approximate LRU using reference bit.
-""".trimIndent(),
-                tags = listOf("algorithms", "caching"),
-                createdAtMillis = todayStart - (24 * 3600 * 1000L),
-                updatedAtMillis = todayStart - (1 * 3600 * 1000L)
-            ),
-            NoteItem(
-                title = "Marcus Aurelius Meditations",
-                content = """# Marcus Aurelius Meditations
-Tags: #philosophy #stoicism #focus
-
-Key takeaway from Book IV:
-The inner retreat. Real peace does not depend on changing geographical location, but in the tranquil ordering of your mind.
-Practice: When overwhelmed by deadlines, pause for 2 minutes and observe without judgment.
-""".trimIndent(),
-                tags = listOf("philosophy", "stoicism", "focus"),
-                createdAtMillis = todayStart - (36 * 3600 * 1000L),
-                updatedAtMillis = todayStart - (5 * 3600 * 1000L)
-            )
-        )
-
-        // Seed Session Logs
-        _sessionLogs.value = listOf(
-            FocusSessionLog(
-                title = "Morning Deep Work",
-                plannedMinutes = 90,
-                actualMinutes = 90,
-                isLockdownEnabled = true,
-                startingStrikes = 3,
-                strikesUsed = 0,
-                breaksTaken = 1,
-                status = SessionStatus.COMPLETED,
-                loggedAtMillis = todayStart + (10 * 3600 * 1000L) + (35 * 60 * 1000L)
-            )
+        // Load settings
+        _settings.value = AppSettings(
+            aiProvider = prefs.getString("ai_provider", "OpenRouter") ?: "OpenRouter",
+            aiBaseUrl = prefs.getString("ai_base_url", "https://openrouter.ai/api/v1") ?: "https://openrouter.ai/api/v1",
+            aiApiKey = prefs.getString("ai_api_key", "") ?: "",
+            aiModelName = prefs.getString("ai_model_name", "google/gemini-2.0-flash-001") ?: "google/gemini-2.0-flash-001",
+            theme = prefs.getString("app_theme", "OBSIDIAN_PURPLE") ?: "OBSIDIAN_PURPLE",
+            fontScale = prefs.getFloat("font_scale", 1.0f),
+            reduceMotion = prefs.getBoolean("reduce_motion", false),
+            gracePeriodSeconds = prefs.getInt("grace_period", 15),
+            breakFrequencyMinutes = prefs.getInt("break_freq", 50),
+            breakDurationMinutes = prefs.getInt("break_dur", 10),
+            sleepTargetHours = prefs.getFloat("sleep_target", 8.0f).toDouble(),
+            mealTargetCount = prefs.getInt("meal_target", 3)
         )
     }
 
-    // --- Life Score Engine (Section 12 of spec) ---
+    // --- Life Score Engine (Section 12 of spec) - Zero mock, purely user-driven ---
     fun calculateLifeScore(): LifeScoreBreakdown {
         val s = _settings.value
         val weights = s.categoryWeights
 
+        val hasAnyData = _sessionLogs.value.isNotEmpty() ||
+                _sleepLogs.value.isNotEmpty() ||
+                _mealLogs.value.isNotEmpty() ||
+                _habits.value.isNotEmpty() ||
+                _events.value.isNotEmpty() ||
+                _goals.value.isNotEmpty()
+
+        if (!hasAnyData) {
+            return LifeScoreBreakdown(
+                overallScore = 0,
+                previousWeekScore = 0,
+                trend = 0,
+                studyScore = 0,
+                sleepScore = 0,
+                mealsScore = 0,
+                habitsScore = 0,
+                activityScore = 0,
+                goalsScore = 0,
+                note = "No activity logged yet. Schedule events, complete focus sessions, log meals or sleep to calculate your score."
+            )
+        }
+
         // 1. Study Score (0-100)
-        // Focus time vs goal (target 2h = 120m daily), tutor session success, strike ratio
-        val totalFocusMinutes = _sessionLogs.value.filter { it.status == SessionStatus.COMPLETED }.sumOf { it.actualMinutes }
-        val focusComponent = ((totalFocusMinutes / 120.0) * 80).coerceIn(20.0, 80.0)
-        val tutorSuccess = if (_tutorSessions.value.isNotEmpty()) _tutorSessions.value.map { it.scorePercentage }.average() * 0.2 else 15.0
-        val studyScore = (focusComponent + tutorSuccess).coerceIn(0.0, 100.0).roundToInt()
+        val completedSessions = _sessionLogs.value.filter { it.status == SessionStatus.COMPLETED }
+        val studyScore = if (completedSessions.isNotEmpty()) {
+            val totalMins = completedSessions.sumOf { it.actualMinutes }
+            val focusComp = ((totalMins / 120.0) * 80).coerceIn(10.0, 80.0)
+            val tutorBonus = if (_tutorSessions.value.isNotEmpty()) _tutorSessions.value.map { it.scorePercentage }.average() * 0.2 else 0.0
+            (focusComp + tutorBonus).coerceIn(0.0, 100.0).roundToInt()
+        } else 0
 
         // 2. Sleep Score (0-100)
-        // Hours slept vs target (default 8h)
         val recentSleep = _sleepLogs.value.firstOrNull { it.type == SleepType.NIGHT }
         val sleepScore = if (recentSleep != null) {
             val ratio = (recentSleep.durationHours / s.sleepTargetHours).coerceAtMost(1.0)
-            ((ratio * 80) + (recentSleep.qualityRating * 4)).coerceIn(10.0, 100.0).roundToInt()
-        } else 75
+            ((ratio * 80) + (recentSleep.qualityRating * 4)).coerceIn(0.0, 100.0).roundToInt()
+        } else 0
 
         // 3. Meals Score (0-100)
         val todayMealCount = _mealLogs.value.size
         val mealScore = if (todayMealCount > 0) {
             val ratio = (todayMealCount.toDouble() / s.mealTargetCount).coerceAtMost(1.0)
             (ratio * 100).roundToInt()
-        } else 50
+        } else 0
 
         // 4. Habits Score (0-100)
         val totalHabits = _habits.value.size
-        val completedHabits = _habits.value.count { it.completedDates.isNotEmpty() }
         val habitScore = if (totalHabits > 0) {
+            val completedHabits = _habits.value.count { it.completedDates.isNotEmpty() }
             ((completedHabits.toDouble() / totalHabits) * 100).roundToInt()
-        } else 70
+        } else 0
 
         // 5. Activity & Rest Score (0-100)
-        val completedActivity = _events.value.count { (it.type == EventType.GYM || it.type == EventType.JOG || it.type == EventType.REST) && it.isCompleted }
         val scheduledActivity = _events.value.count { it.type == EventType.GYM || it.type == EventType.JOG || it.type == EventType.REST }
         val activityScore = if (scheduledActivity > 0) {
-            ((completedActivity.toDouble() / scheduledActivity) * 100).coerceAtLeast(30.0).roundToInt()
-        } else 80
+            val completedActivity = _events.value.count { (it.type == EventType.GYM || it.type == EventType.JOG || it.type == EventType.REST) && it.isCompleted }
+            ((completedActivity.toDouble() / scheduledActivity) * 100).roundToInt()
+        } else 0
 
         // 6. Goals Score (0-100)
         val goals = _goals.value
         val goalsScore = if (goals.isNotEmpty()) {
             val avg = goals.map { (it.currentValue / it.targetValue.coerceAtLeast(1.0)) * 100 }.average()
             avg.coerceIn(0.0, 100.0).roundToInt()
-        } else 70
+        } else 0
 
-        // Weighted overall score
+        // Weighted overall score skipping empty categories (Section 12 requirement)
         var totalWeight = 0.0
         var weightedSum = 0.0
 
@@ -371,24 +167,18 @@ Practice: When overwhelmed by deadlines, pause for 2 minutes and observe without
         if (activityScore > 0) { weightedSum += activityScore * weights.activity; totalWeight += weights.activity }
         if (goalsScore > 0) { weightedSum += goalsScore * weights.goals; totalWeight += weights.goals }
 
-        val overall = if (totalWeight > 0) (weightedSum / totalWeight).roundToInt() else 75
-        val previousWeek = 78
-        val trend = overall - previousWeek
+        val overall = if (totalWeight > 0) (weightedSum / totalWeight).roundToInt() else 0
+        val trend = 0
 
-        // Determine weakest / strongest area
-        val scores = listOf("Study" to studyScore, "Sleep" to sleepScore, "Meals" to mealScore, "Habits" to habitScore, "Activity & Rest" to activityScore, "Goals" to goalsScore)
-        val weakest = scores.minByOrNull { it.second }
-        val strongest = scores.maxByOrNull { it.second }
-
-        val note = if (trend >= 0) {
-            "Strongest area is ${strongest?.first} (${strongest?.second}%). Life Score is up by +$trend vs last week."
+        val note = if (overall > 0) {
+            "Current score is $overall% based on your logged actions today."
         } else {
-            "${weakest?.first} was your weakest area this week (${weakest?.second}%). Consider scheduling an extra recovery block."
+            "Start logging your day to track your Life Score."
         }
 
         return LifeScoreBreakdown(
             overallScore = overall,
-            previousWeekScore = previousWeek,
+            previousWeekScore = 0,
             trend = trend,
             studyScore = studyScore,
             sleepScore = sleepScore,
@@ -398,6 +188,19 @@ Practice: When overwhelmed by deadlines, pause for 2 minutes and observe without
             goalsScore = goalsScore,
             note = note
         )
+    }
+
+    // --- Chat History (Wingman Study Sessions) ---
+    fun addChatMessage(msg: ChatMessage) {
+        _chatHistory.value = _chatHistory.value + msg
+        saveAll()
+    }
+
+    fun clearChatHistory(courseId: String? = null) {
+        _chatHistory.value = if (courseId != null) {
+            _chatHistory.value.filterNot { it.courseId == courseId }
+        } else emptyList()
+        saveAll()
     }
 
     // --- Schedule & Calendar Operations ---
@@ -542,10 +345,11 @@ Practice: When overwhelmed by deadlines, pause for 2 minutes and observe without
     }
 
     // --- Courses & Documents ---
-    fun addCourse(name: String, sectionType: SectionType, description: String = "") {
+    fun addCourse(name: String, sectionType: SectionType, description: String = ""): CourseSection {
         val course = CourseSection(name = name, sectionType = sectionType, description = description)
         _courses.value = _courses.value + course
         saveAll()
+        return course
     }
 
     fun addDocument(document: StudyDocument) {
@@ -591,6 +395,7 @@ Practice: When overwhelmed by deadlines, pause for 2 minutes and observe without
         saveAll()
     }
 
+
     // --- Settings ---
     fun updateSettings(settings: AppSettings) {
         _settings.value = settings
@@ -614,13 +419,21 @@ Practice: When overwhelmed by deadlines, pause for 2 minutes and observe without
             .apply()
     }
 
-    // --- Persistence & Wi-Fi Export/Import ---
+    // --- Profile Name ---
+    fun setProfileName(name: String) {
+        _profileName.value = name.trim()
+        prefs.edit().putString("profile_name", _profileName.value).apply()
+        saveAll()
+    }
+
+    // --- Comprehensive Export / Import (All books, documents, progress, and records) ---
     fun exportAllToJson(): String {
         val root = JSONObject()
-        root.put("version", 1)
+        root.put("version", 3)
         root.put("exportedAt", currentTimestamp())
+        root.put("profileName", _profileName.value)
 
-        // Export events
+        // 1. Export events
         val eventsArray = JSONArray()
         for (e in _events.value) {
             val obj = JSONObject()
@@ -630,6 +443,7 @@ Practice: When overwhelmed by deadlines, pause for 2 minutes and observe without
             obj.put("startTimeMillis", e.startTimeMillis)
             obj.put("endTimeMillis", e.endTimeMillis)
             obj.put("type", e.type.name)
+            obj.put("courseId", e.courseId ?: "")
             obj.put("isCompleted", e.isCompleted)
             obj.put("loggedAtMillis", e.loggedAtMillis)
             obj.put("editedAtMillis", e.editedAtMillis ?: -1L)
@@ -637,20 +451,124 @@ Practice: When overwhelmed by deadlines, pause for 2 minutes and observe without
         }
         root.put("events", eventsArray)
 
-        // Export notes
+        // 2. Export habits & streak progress
+        val habitsArray = JSONArray()
+        for (h in _habits.value) {
+            val obj = JSONObject()
+            obj.put("id", h.id)
+            obj.put("name", h.name)
+            obj.put("description", h.description)
+            obj.put("frequencyDays", h.frequencyDays)
+            obj.put("streak", h.streak)
+            obj.put("bestStreak", h.bestStreak)
+            val completedDatesArray = JSONArray()
+            h.completedDates.forEach { completedDatesArray.put(it) }
+            obj.put("completedDates", completedDatesArray)
+            obj.put("loggedAtMillis", h.loggedAtMillis)
+            obj.put("lastCompletedAtMillis", h.lastCompletedAtMillis ?: -1L)
+            habitsArray.put(obj)
+        }
+        root.put("habits", habitsArray)
+
+        // 3. Export goals & progress
+        val goalsArray = JSONArray()
+        for (g in _goals.value) {
+            val obj = JSONObject()
+            obj.put("id", g.id)
+            obj.put("title", g.title)
+            obj.put("category", g.category)
+            obj.put("targetValue", g.targetValue)
+            obj.put("currentValue", g.currentValue)
+            obj.put("unit", g.unit)
+            obj.put("deadlineMillis", g.deadlineMillis ?: -1L)
+            obj.put("loggedAtMillis", g.loggedAtMillis)
+            obj.put("editedAtMillis", g.editedAtMillis ?: -1L)
+            goalsArray.put(obj)
+        }
+        root.put("goals", goalsArray)
+
+        // 4. Export courses
+        val coursesArray = JSONArray()
+        for (c in _courses.value) {
+            val obj = JSONObject()
+            obj.put("id", c.id)
+            obj.put("name", c.name)
+            obj.put("sectionType", c.sectionType.name)
+            obj.put("description", c.description)
+            obj.put("createdAtMillis", c.createdAtMillis)
+            coursesArray.put(obj)
+        }
+        root.put("courses", coursesArray)
+
+        // 5. Export books & documents data (content, reading progress, chunks, highlights)
+        val docsArray = JSONArray()
+        for (d in _documents.value) {
+            val obj = JSONObject()
+            obj.put("id", d.id)
+            obj.put("courseId", d.courseId)
+            obj.put("title", d.title)
+            obj.put("author", d.author)
+            obj.put("format", d.format)
+            obj.put("content", d.content)
+            obj.put("readingProgressPercent", d.readingProgressPercent)
+            obj.put("lastReadPosition", d.lastReadPosition)
+            obj.put("loggedAtMillis", d.loggedAtMillis)
+            obj.put("lastAccessedMillis", d.lastAccessedMillis)
+
+            val highlightsArray = JSONArray()
+            d.highlights.forEach { highlightsArray.put(it) }
+            obj.put("highlights", highlightsArray)
+
+            val chunksArray = JSONArray()
+            for (chk in d.chunks) {
+                val cObj = JSONObject()
+                cObj.put("id", chk.id)
+                cObj.put("title", chk.title)
+                cObj.put("text", chk.text)
+                chunksArray.put(cObj)
+            }
+            obj.put("chunks", chunksArray)
+
+            docsArray.put(obj)
+        }
+        root.put("documents", docsArray)
+
+        // 6. Export notes
         val notesArray = JSONArray()
         for (n in _notes.value) {
             val obj = JSONObject()
             obj.put("id", n.id)
             obj.put("title", n.title)
             obj.put("content", n.content)
+            obj.put("courseId", n.courseId ?: "")
+            val tagsArray = JSONArray()
+            n.tags.forEach { tagsArray.put(it) }
+            obj.put("tags", tagsArray)
+            val imagesArray = JSONArray()
+            n.imageUris.forEach { imagesArray.put(it) }
+            obj.put("imageUris", imagesArray)
             obj.put("createdAtMillis", n.createdAtMillis)
             obj.put("updatedAtMillis", n.updatedAtMillis)
             notesArray.put(obj)
         }
         root.put("notes", notesArray)
 
-        // Export meals & sleep
+        // 7. Export sleep logs
+        val sleepArray = JSONArray()
+        for (s in _sleepLogs.value) {
+            val obj = JSONObject()
+            obj.put("id", s.id)
+            obj.put("type", s.type.name)
+            obj.put("startTimeMillis", s.startTimeMillis)
+            obj.put("endTimeMillis", s.endTimeMillis)
+            obj.put("qualityRating", s.qualityRating)
+            obj.put("loggedAtMillis", s.loggedAtMillis)
+            obj.put("editedAtMillis", s.editedAtMillis ?: -1L)
+            sleepArray.put(obj)
+        }
+        root.put("sleep", sleepArray)
+
+        // 8. Export meals
         val mealsArray = JSONArray()
         for (m in _mealLogs.value) {
             val obj = JSONObject()
@@ -658,9 +576,94 @@ Practice: When overwhelmed by deadlines, pause for 2 minutes and observe without
             obj.put("timestampMillis", m.timestampMillis)
             obj.put("note", m.note)
             obj.put("loggedAtMillis", m.loggedAtMillis)
+            obj.put("editedAtMillis", m.editedAtMillis ?: -1L)
             mealsArray.put(obj)
         }
         root.put("meals", mealsArray)
+
+        // 9. Export flashcards
+        val flashcardsArray = JSONArray()
+        for (f in _flashcards.value) {
+            val obj = JSONObject()
+            obj.put("id", f.id)
+            obj.put("courseId", f.courseId)
+            obj.put("front", f.front)
+            obj.put("back", f.back)
+            obj.put("timesReviewed", f.timesReviewed)
+            obj.put("correctCount", f.correctCount)
+            obj.put("lastReviewedMillis", f.lastReviewedMillis ?: -1L)
+            flashcardsArray.put(obj)
+        }
+        root.put("flashcards", flashcardsArray)
+
+        // 10. Export tutor sessions
+        val tutorArray = JSONArray()
+        for (t in _tutorSessions.value) {
+            val obj = JSONObject()
+            obj.put("id", t.id)
+            obj.put("courseId", t.courseId)
+            obj.put("questionPrompt", t.questionPrompt)
+            obj.put("studentAnswer", t.studentAnswer)
+            obj.put("aiGrade", t.aiGrade)
+            obj.put("scorePercentage", t.scorePercentage)
+            obj.put("feedback", t.feedback)
+            val weakArray = JSONArray()
+            t.weakTopics.forEach { weakArray.put(it) }
+            obj.put("weakTopics", weakArray)
+            obj.put("recommendedRevision", t.recommendedRevision)
+            obj.put("loggedAtMillis", t.loggedAtMillis)
+            tutorArray.put(obj)
+        }
+        root.put("tutorSessions", tutorArray)
+
+        // 11. Export focus sessions & strikes
+        val sessionLogsArray = JSONArray()
+        for (sl in _sessionLogs.value) {
+            val obj = JSONObject()
+            obj.put("id", sl.id)
+            obj.put("title", sl.title)
+            obj.put("plannedMinutes", sl.plannedMinutes)
+            obj.put("actualMinutes", sl.actualMinutes)
+            obj.put("isLockdownEnabled", sl.isLockdownEnabled)
+            obj.put("startingStrikes", sl.startingStrikes)
+            obj.put("strikesUsed", sl.strikesUsed)
+            obj.put("breaksTaken", sl.breaksTaken)
+            obj.put("status", sl.status.name)
+            obj.put("loggedAtMillis", sl.loggedAtMillis)
+            sessionLogsArray.put(obj)
+        }
+        root.put("sessionLogs", sessionLogsArray)
+
+        // 12. Export chat (Wingman study sessions)
+        val chatArray = JSONArray()
+        for (c in _chatHistory.value) {
+            val obj = JSONObject()
+            obj.put("id", c.id)
+            obj.put("sender", c.sender)
+            obj.put("text", c.text)
+            obj.put("courseId", c.courseId ?: "")
+            obj.put("imagePath", c.imagePath ?: "")
+            obj.put("timestampMillis", c.timestampMillis)
+            chatArray.put(obj)
+        }
+        root.put("chat", chatArray)
+
+        // 13. Export settings
+        val s = _settings.value
+        val settingsObj = JSONObject()
+        settingsObj.put("aiProvider", s.aiProvider)
+        settingsObj.put("aiBaseUrl", s.aiBaseUrl)
+        settingsObj.put("aiApiKey", s.aiApiKey)
+        settingsObj.put("aiModelName", s.aiModelName)
+        settingsObj.put("theme", s.theme)
+        settingsObj.put("fontScale", s.fontScale.toDouble())
+        settingsObj.put("reduceMotion", s.reduceMotion)
+        settingsObj.put("gracePeriodSeconds", s.gracePeriodSeconds)
+        settingsObj.put("breakFrequencyMinutes", s.breakFrequencyMinutes)
+        settingsObj.put("breakDurationMinutes", s.breakDurationMinutes)
+        settingsObj.put("sleepTargetHours", s.sleepTargetHours)
+        settingsObj.put("mealTargetCount", s.mealTargetCount)
+        root.put("settings", settingsObj)
 
         return root.toString(2)
     }
@@ -668,12 +671,23 @@ Practice: When overwhelmed by deadlines, pause for 2 minutes and observe without
     fun importFromJson(jsonString: String): Boolean {
         return try {
             val root = JSONObject(jsonString)
+
+            // Profile name
+            if (root.has("profileName")) {
+                val name = root.optString("profileName", "").trim()
+                if (name.isNotEmpty()) {
+                    _profileName.value = name
+                    prefs.edit().putString("profile_name", name).apply()
+                }
+            }
+
+            // Events
             if (root.has("events")) {
                 val array = root.getJSONArray("events")
-                val importedEvents = mutableListOf<ScheduleEvent>()
+                val list = mutableListOf<ScheduleEvent>()
                 for (i in 0 until array.length()) {
                     val obj = array.getJSONObject(i)
-                    importedEvents.add(
+                    list.add(
                         ScheduleEvent(
                             id = obj.optString("id", UUID.randomUUID().toString()),
                             title = obj.getString("title"),
@@ -681,13 +695,331 @@ Practice: When overwhelmed by deadlines, pause for 2 minutes and observe without
                             startTimeMillis = obj.getLong("startTimeMillis"),
                             endTimeMillis = obj.getLong("endTimeMillis"),
                             type = try { EventType.valueOf(obj.getString("type")) } catch (e: Exception) { EventType.STUDY },
+                            courseId = obj.optString("courseId", "").ifEmpty { null },
                             isCompleted = obj.optBoolean("isCompleted", false),
+                            loggedAtMillis = obj.optLong("loggedAtMillis", currentTimestamp()),
+                            editedAtMillis = if (obj.has("editedAtMillis") && obj.getLong("editedAtMillis") > 0) obj.getLong("editedAtMillis") else null
+                        )
+                    )
+                }
+                _events.value = list
+            }
+
+            // Habits & streak progress
+            if (root.has("habits")) {
+                val array = root.getJSONArray("habits")
+                val list = mutableListOf<HabitItem>()
+                for (i in 0 until array.length()) {
+                    val obj = array.getJSONObject(i)
+                    val datesList = mutableListOf<String>()
+                    if (obj.has("completedDates")) {
+                        val dArr = obj.getJSONArray("completedDates")
+                        for (dIdx in 0 until dArr.length()) {
+                            datesList.add(dArr.getString(dIdx))
+                        }
+                    }
+                    list.add(
+                        HabitItem(
+                            id = obj.optString("id", UUID.randomUUID().toString()),
+                            name = obj.getString("name"),
+                            description = obj.optString("description", ""),
+                            frequencyDays = obj.optInt("frequencyDays", 1),
+                            streak = obj.optInt("streak", 0),
+                            bestStreak = obj.optInt("bestStreak", 0),
+                            completedDates = datesList,
+                            loggedAtMillis = obj.optLong("loggedAtMillis", currentTimestamp()),
+                            lastCompletedAtMillis = if (obj.has("lastCompletedAtMillis") && obj.getLong("lastCompletedAtMillis") > 0) obj.getLong("lastCompletedAtMillis") else null
+                        )
+                    )
+                }
+                _habits.value = list
+            }
+
+            // Goals
+            if (root.has("goals")) {
+                val array = root.getJSONArray("goals")
+                val list = mutableListOf<GoalItem>()
+                for (i in 0 until array.length()) {
+                    val obj = array.getJSONObject(i)
+                    list.add(
+                        GoalItem(
+                            id = obj.optString("id", UUID.randomUUID().toString()),
+                            title = obj.getString("title"),
+                            category = obj.optString("category", "Study"),
+                            targetValue = obj.optDouble("targetValue", 100.0),
+                            currentValue = obj.optDouble("currentValue", 0.0),
+                            unit = obj.optString("unit", "%"),
+                            deadlineMillis = if (obj.has("deadlineMillis") && obj.getLong("deadlineMillis") > 0) obj.getLong("deadlineMillis") else null,
+                            loggedAtMillis = obj.optLong("loggedAtMillis", currentTimestamp()),
+                            editedAtMillis = if (obj.has("editedAtMillis") && obj.getLong("editedAtMillis") > 0) obj.getLong("editedAtMillis") else null
+                        )
+                    )
+                }
+                _goals.value = list
+            }
+
+            // Courses
+            if (root.has("courses")) {
+                val array = root.getJSONArray("courses")
+                val list = mutableListOf<CourseSection>()
+                for (i in 0 until array.length()) {
+                    val obj = array.getJSONObject(i)
+                    list.add(
+                        CourseSection(
+                            id = obj.optString("id", UUID.randomUUID().toString()),
+                            name = obj.getString("name"),
+                            sectionType = try { SectionType.valueOf(obj.getString("sectionType")) } catch (e: Exception) { SectionType.STUDY },
+                            description = obj.optString("description", ""),
+                            createdAtMillis = obj.optLong("createdAtMillis", currentTimestamp())
+                        )
+                    )
+                }
+                _courses.value = list
+            }
+
+            // Books & Documents Data (with chunks, highlights, reading progress)
+            if (root.has("documents")) {
+                val array = root.getJSONArray("documents")
+                val list = mutableListOf<StudyDocument>()
+                for (i in 0 until array.length()) {
+                    val obj = array.getJSONObject(i)
+                    val content = obj.getString("content")
+
+                    val chunksList = mutableListOf<DocumentChunk>()
+                    if (obj.has("chunks")) {
+                        val chkArr = obj.getJSONArray("chunks")
+                        for (cIdx in 0 until chkArr.length()) {
+                            val cObj = chkArr.getJSONObject(cIdx)
+                            chunksList.add(
+                                DocumentChunk(
+                                    id = cObj.optString("id", UUID.randomUUID().toString()),
+                                    title = cObj.optString("title", "Part ${cIdx + 1}"),
+                                    text = cObj.getString("text")
+                                )
+                            )
+                        }
+                    }
+                    if (chunksList.isEmpty()) {
+                        content.chunked(600).forEachIndexed { idx, chk ->
+                            chunksList.add(DocumentChunk("chk_$idx", "Part ${idx + 1}", chk))
+                        }
+                    }
+
+                    val highlightsList = mutableListOf<String>()
+                    if (obj.has("highlights")) {
+                        val hlArr = obj.getJSONArray("highlights")
+                        for (hIdx in 0 until hlArr.length()) {
+                            highlightsList.add(hlArr.getString(hIdx))
+                        }
+                    }
+
+                    list.add(
+                        StudyDocument(
+                            id = obj.optString("id", UUID.randomUUID().toString()),
+                            courseId = obj.getString("courseId"),
+                            title = obj.getString("title"),
+                            author = obj.optString("author", ""),
+                            format = obj.optString("format", "TXT"),
+                            content = content,
+                            chunks = chunksList,
+                            readingProgressPercent = obj.optInt("readingProgressPercent", 0),
+                            lastReadPosition = obj.optInt("lastReadPosition", 0),
+                            highlights = highlightsList,
+                            loggedAtMillis = obj.optLong("loggedAtMillis", currentTimestamp()),
+                            lastAccessedMillis = obj.optLong("lastAccessedMillis", currentTimestamp())
+                        )
+                    )
+                }
+                _documents.value = list
+            }
+
+            // Notes
+            if (root.has("notes")) {
+                val array = root.getJSONArray("notes")
+                val list = mutableListOf<NoteItem>()
+                for (i in 0 until array.length()) {
+                    val obj = array.getJSONObject(i)
+                    val tagsList = mutableListOf<String>()
+                    if (obj.has("tags")) {
+                        val tArr = obj.getJSONArray("tags")
+                        for (tIdx in 0 until tArr.length()) tagsList.add(tArr.getString(tIdx))
+                    }
+                    val imgsList = mutableListOf<String>()
+                    if (obj.has("imageUris")) {
+                        val iArr = obj.getJSONArray("imageUris")
+                        for (imIdx in 0 until iArr.length()) imgsList.add(iArr.getString(imIdx))
+                    }
+                    list.add(
+                        NoteItem(
+                            id = obj.optString("id", UUID.randomUUID().toString()),
+                            title = obj.getString("title"),
+                            content = obj.getString("content"),
+                            courseId = obj.optString("courseId", "").ifEmpty { null },
+                            tags = tagsList,
+                            imageUris = imgsList,
+                            createdAtMillis = obj.optLong("createdAtMillis", currentTimestamp()),
+                            updatedAtMillis = obj.optLong("updatedAtMillis", currentTimestamp())
+                        )
+                    )
+                }
+                _notes.value = list
+            }
+
+            // Sleep logs
+            if (root.has("sleep")) {
+                val array = root.getJSONArray("sleep")
+                val list = mutableListOf<SleepEntry>()
+                for (i in 0 until array.length()) {
+                    val obj = array.getJSONObject(i)
+                    list.add(
+                        SleepEntry(
+                            id = obj.optString("id", UUID.randomUUID().toString()),
+                            type = try { SleepType.valueOf(obj.getString("type")) } catch (e: Exception) { SleepType.NIGHT },
+                            startTimeMillis = obj.getLong("startTimeMillis"),
+                            endTimeMillis = obj.getLong("endTimeMillis"),
+                            qualityRating = obj.optInt("qualityRating", 4),
+                            loggedAtMillis = obj.optLong("loggedAtMillis", currentTimestamp()),
+                            editedAtMillis = if (obj.has("editedAtMillis") && obj.getLong("editedAtMillis") > 0) obj.getLong("editedAtMillis") else null
+                        )
+                    )
+                }
+                _sleepLogs.value = list
+            }
+
+            // Meals
+            if (root.has("meals")) {
+                val array = root.getJSONArray("meals")
+                val list = mutableListOf<MealEntry>()
+                for (i in 0 until array.length()) {
+                    val obj = array.getJSONObject(i)
+                    list.add(
+                        MealEntry(
+                            id = obj.optString("id", UUID.randomUUID().toString()),
+                            timestampMillis = obj.optLong("timestampMillis", currentTimestamp()),
+                            note = obj.optString("note", "Meal"),
+                            loggedAtMillis = obj.optLong("loggedAtMillis", currentTimestamp()),
+                            editedAtMillis = if (obj.has("editedAtMillis") && obj.getLong("editedAtMillis") > 0) obj.getLong("editedAtMillis") else null
+                        )
+                    )
+                }
+                _mealLogs.value = list
+            }
+
+            // Flashcards
+            if (root.has("flashcards")) {
+                val array = root.getJSONArray("flashcards")
+                val list = mutableListOf<Flashcard>()
+                for (i in 0 until array.length()) {
+                    val obj = array.getJSONObject(i)
+                    list.add(
+                        Flashcard(
+                            id = obj.optString("id", UUID.randomUUID().toString()),
+                            courseId = obj.getString("courseId"),
+                            front = obj.getString("front"),
+                            back = obj.getString("back"),
+                            timesReviewed = obj.optInt("timesReviewed", 0),
+                            correctCount = obj.optInt("correctCount", 0),
+                            lastReviewedMillis = if (obj.has("lastReviewedMillis") && obj.getLong("lastReviewedMillis") > 0) obj.getLong("lastReviewedMillis") else null
+                        )
+                    )
+                }
+                _flashcards.value = list
+            }
+
+            // Tutor Sessions
+            if (root.has("tutorSessions")) {
+                val array = root.getJSONArray("tutorSessions")
+                val list = mutableListOf<TutorSession>()
+                for (i in 0 until array.length()) {
+                    val obj = array.getJSONObject(i)
+                    val weakList = mutableListOf<String>()
+                    if (obj.has("weakTopics")) {
+                        val wArr = obj.getJSONArray("weakTopics")
+                        for (wIdx in 0 until wArr.length()) weakList.add(wArr.getString(wIdx))
+                    }
+                    list.add(
+                        TutorSession(
+                            id = obj.optString("id", UUID.randomUUID().toString()),
+                            courseId = obj.getString("courseId"),
+                            questionPrompt = obj.getString("questionPrompt"),
+                            studentAnswer = obj.getString("studentAnswer"),
+                            aiGrade = obj.optString("aiGrade", "B+"),
+                            scorePercentage = obj.optInt("scorePercentage", 85),
+                            feedback = obj.getString("feedback"),
+                            weakTopics = weakList,
+                            recommendedRevision = obj.optString("recommendedRevision", ""),
                             loggedAtMillis = obj.optLong("loggedAtMillis", currentTimestamp())
                         )
                     )
                 }
-                _events.value = importedEvents
+                _tutorSessions.value = list
             }
+
+            // Session Logs (Focus & Strikes)
+            if (root.has("sessionLogs")) {
+                val array = root.getJSONArray("sessionLogs")
+                val list = mutableListOf<FocusSessionLog>()
+                for (i in 0 until array.length()) {
+                    val obj = array.getJSONObject(i)
+                    list.add(
+                        FocusSessionLog(
+                            id = obj.optString("id", UUID.randomUUID().toString()),
+                            title = obj.optString("title", "Study Session"),
+                            plannedMinutes = obj.optInt("plannedMinutes", 25),
+                            actualMinutes = obj.optInt("actualMinutes", 25),
+                            isLockdownEnabled = obj.optBoolean("isLockdownEnabled", false),
+                            startingStrikes = obj.optInt("startingStrikes", 0),
+                            strikesUsed = obj.optInt("strikesUsed", 0),
+                            breaksTaken = obj.optInt("breaksTaken", 0),
+                            status = try { SessionStatus.valueOf(obj.getString("status")) } catch (e: Exception) { SessionStatus.COMPLETED },
+                            loggedAtMillis = obj.optLong("loggedAtMillis", currentTimestamp())
+                        )
+                    )
+                }
+                _sessionLogs.value = list
+            }
+
+            // Chat history
+            if (root.has("chat")) {
+                val array = root.getJSONArray("chat")
+                val list = mutableListOf<ChatMessage>()
+                for (i in 0 until array.length()) {
+                    val obj = array.getJSONObject(i)
+                    list.add(
+                        ChatMessage(
+                            id = obj.optString("id", UUID.randomUUID().toString()),
+                            sender = obj.getString("sender"),
+                            text = obj.getString("text"),
+                            courseId = obj.optString("courseId", "").ifEmpty { null },
+                            imagePath = obj.optString("imagePath", "").ifEmpty { null },
+                            timestampMillis = obj.optLong("timestampMillis", currentTimestamp())
+                        )
+                    )
+                }
+                _chatHistory.value = list
+            }
+
+            // Settings
+            if (root.has("settings")) {
+                val sObj = root.getJSONObject("settings")
+                val updatedSettings = _settings.value.copy(
+                    aiProvider = sObj.optString("aiProvider", _settings.value.aiProvider),
+                    aiBaseUrl = sObj.optString("aiBaseUrl", _settings.value.aiBaseUrl),
+                    aiApiKey = sObj.optString("aiApiKey", _settings.value.aiApiKey),
+                    aiModelName = sObj.optString("aiModelName", _settings.value.aiModelName),
+                    theme = sObj.optString("theme", _settings.value.theme),
+                    fontScale = sObj.optDouble("fontScale", _settings.value.fontScale.toDouble()).toFloat(),
+                    reduceMotion = sObj.optBoolean("reduceMotion", _settings.value.reduceMotion),
+                    gracePeriodSeconds = sObj.optInt("gracePeriodSeconds", _settings.value.gracePeriodSeconds),
+                    breakFrequencyMinutes = sObj.optInt("breakFrequencyMinutes", _settings.value.breakFrequencyMinutes),
+                    breakDurationMinutes = sObj.optInt("breakDurationMinutes", _settings.value.breakDurationMinutes),
+                    sleepTargetHours = sObj.optDouble("sleepTargetHours", _settings.value.sleepTargetHours),
+                    mealTargetCount = sObj.optInt("mealTargetCount", _settings.value.mealTargetCount)
+                )
+                _settings.value = updatedSettings
+                saveSettingsToPrefs(updatedSettings)
+            }
+
             saveAll()
             true
         } catch (e: Exception) {
@@ -697,32 +1029,7 @@ Practice: When overwhelmed by deadlines, pause for 2 minutes and observe without
     }
 
     private fun saveAll() {
-        // Lightweight local persistence via SharedPreferences / JSON files
         val json = exportAllToJson()
         prefs.edit().putString("backup_json", json).apply()
-    }
-
-    private fun loadFromDisk() {
-        val json = prefs.getString("backup_json", null)
-        if (!json.isNullOrBlank()) {
-            importFromJson(json)
-        } else {
-            seedInitialData()
-        }
-        // Load settings
-        _settings.value = AppSettings(
-            aiProvider = prefs.getString("ai_provider", "OpenRouter") ?: "OpenRouter",
-            aiBaseUrl = prefs.getString("ai_base_url", "https://openrouter.ai/api/v1") ?: "https://openrouter.ai/api/v1",
-            aiApiKey = prefs.getString("ai_api_key", "") ?: "",
-            aiModelName = prefs.getString("ai_model_name", "google/gemini-2.0-flash-001") ?: "google/gemini-2.0-flash-001",
-            theme = prefs.getString("app_theme", "OBSIDIAN_PURPLE") ?: "OBSIDIAN_PURPLE",
-            fontScale = prefs.getFloat("font_scale", 1.0f),
-            reduceMotion = prefs.getBoolean("reduce_motion", false),
-            gracePeriodSeconds = prefs.getInt("grace_period", 15),
-            breakFrequencyMinutes = prefs.getInt("break_freq", 50),
-            breakDurationMinutes = prefs.getInt("break_dur", 10),
-            sleepTargetHours = prefs.getFloat("sleep_target", 8.0f).toDouble(),
-            mealTargetCount = prefs.getInt("meal_target", 3)
-        )
     }
 }

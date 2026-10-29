@@ -261,3 +261,12 @@ data class AgentExecutionResult(
     val actions: List<AgentAction> = emptyList(),
     val attachedLocalPhotoPath: String? = null
 )
+
+data class ChatMessage(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val sender: String, // "USER" or "WINGMAN"
+    val text: String,
+    val courseId: String? = null,
+    val imagePath: String? = null,
+    val timestampMillis: Long = currentTimestamp()
+)

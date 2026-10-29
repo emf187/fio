@@ -162,6 +162,7 @@ fun FioBadge(
 @Composable
 fun FioSidebarDrawer(
     currentScreen: FioScreen,
+    profileName: String = "",
     onSelectScreen: (FioScreen) -> Unit,
     onClose: () -> Unit
 ) {
@@ -177,7 +178,7 @@ fun FioSidebarDrawer(
                 .fillMaxSize()
                 .padding(vertical = 16.dp, horizontal = 12.dp)
         ) {
-            // Header with App Identity
+            // Header with App Identity & User Profile
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
@@ -204,14 +205,14 @@ fun FioSidebarDrawer(
 
                 Column {
                     Text(
-                        text = "Fio",
+                        text = if (profileName.isNotBlank()) profileName else "Fio",
                         color = colors.textPrimary,
-                        fontSize = 20.sp,
+                        fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 0.5.sp
                     )
                     Text(
-                        text = "effio • to realize & know",
+                        text = if (profileName.isNotBlank()) "Personal Life Planner" else "effio • to realize & know",
                         color = colors.textMuted,
                         fontSize = 11.sp
                     )
@@ -231,7 +232,13 @@ fun FioSidebarDrawer(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                 )
 
-                NavItem(FioScreen.DASHBOARD, currentScreen, onSelectScreen, onClose)
+                NavItem(
+                    screen = FioScreen.DASHBOARD,
+                    currentScreen = currentScreen,
+                    onSelectScreen = onSelectScreen,
+                    onClose = onClose,
+                    customLabel = if (profileName.isNotBlank()) profileName else null
+                )
                 NavItem(FioScreen.CALENDAR, currentScreen, onSelectScreen, onClose)
                 NavItem(FioScreen.TIMER, currentScreen, onSelectScreen, onClose)
 
@@ -275,7 +282,8 @@ private fun NavItem(
     screen: FioScreen,
     currentScreen: FioScreen,
     onSelectScreen: (FioScreen) -> Unit,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    customLabel: String? = null
 ) {
     val colors = LocalFioColors.current
     val isSelected = screen == currentScreen
@@ -298,13 +306,13 @@ private fun NavItem(
     ) {
         Icon(
             imageVector = screen.icon,
-            contentDescription = screen.title,
+            contentDescription = customLabel ?: screen.title,
             tint = iconColor,
             modifier = Modifier.size(20.dp)
         )
         Spacer(modifier = Modifier.width(12.dp))
         Text(
-            text = screen.title,
+            text = customLabel ?: screen.title,
             color = textColor,
             fontSize = 14.sp,
             fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
