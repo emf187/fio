@@ -1,0 +1,6 @@
+{
+  "name": "Fio",
+  "description": "Personal life planner and AI study companion with offline-first storage, Obsidian-style dark theme, and Wingman AI assistant.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
