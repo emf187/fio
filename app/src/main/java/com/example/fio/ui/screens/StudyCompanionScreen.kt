@@ -1,4 +1,4 @@
-package com.example.fio.ui.screens
+﻿package com.example.fio.ui.screens
 
 import android.net.Uri
 import android.widget.Toast
@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,8 +23,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.fio.data.ai.AiResult
@@ -35,17 +37,12 @@ import com.example.fio.data.storage.ImageStorage
 import com.example.fio.ui.components.FioBadge
 import com.example.fio.ui.components.FioCard
 import com.example.fio.ui.components.FioDivider
+import com.example.fio.ui.reader.FioReaderHost
 import com.example.fio.ui.theme.LocalFioColors
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-
-enum class ReadingMode {
-    ACADEMIC,
-    LEISURE,
-    RESEARCH
-}
 
 @Composable
 fun StudyCompanionScreen(
@@ -82,12 +79,16 @@ fun StudyCompanionScreen(
 
     // Active Reader State
     var activeReadingDoc by remember { mutableStateOf<StudyDocument?>(null) }
-    var readingMode by remember { mutableStateOf(ReadingMode.ACADEMIC) }
-    var readerFontSize by remember { mutableStateOf(15.sp) }
+
+    // Long-press target for the "remove document" confirmation
+    var docPendingRemoval by remember { mutableStateOf<StudyDocument?>(null) }
 
     // Document Picker State
     var targetCourseIdForImport by remember { mutableStateOf("") }
     var isImportingDocs by remember { mutableStateOf(false) }
+    var importDone by remember { mutableIntStateOf(0) }
+    var importTotal by remember { mutableIntStateOf(0) }
+    var importCurrentFile by remember { mutableStateOf("") }
 
     // System File Picker for PDF, EPUB, DOCX, CSV/XLS, MD, TXT
     val documentPickerLauncher = rememberLauncherForActivityResult(
@@ -97,15 +98,25 @@ fun StudyCompanionScreen(
             val targetId = if (targetCourseIdForImport.isNotBlank()) targetCourseIdForImport else selectedCourseId
             if (targetId.isNotBlank()) {
                 isImportingDocs = true
+                importTotal = uris.size
+                importDone = 0
+                importCurrentFile = ""
                 coroutineScope.launch {
                     var successCount = 0
-                    for (uri in uris) {
+                    for ((index, uri) in uris.withIndex()) {
+                        importCurrentFile = uri.lastPathSegment
+                            ?.substringAfterLast('/')
+                            ?.substringAfterLast(':')
+                            ?.takeIf { it.isNotBlank() }
+                            ?: "Document ${index + 1}"
                         val imported = DocumentImporter.importDocument(context, uri, targetId)
                         if (imported != null) {
                             repository.addDocument(imported)
                             successCount++
                         }
+                        importDone = index + 1
                     }
+                    importCurrentFile = ""
                     isImportingDocs = false
                     Toast.makeText(
                         context,
@@ -137,126 +148,53 @@ fun StudyCompanionScreen(
     var newDocTitle by remember { mutableStateOf("") }
     var newDocContent by remember { mutableStateOf("") }
 
-    // Document Reader Dialog
+    // Full-screen Areada-based reader (see ui/reader/FioReaderHost.kt).
+    // Hosted in its own full-screen window so it always draws above the library.
     activeReadingDoc?.let { doc ->
-        val isLeisure = readingMode == ReadingMode.LEISURE
-        val readerBg = if (isLeisure) Color(0xFF141416) else colors.background
-
-        AlertDialog(
+        androidx.compose.ui.window.Dialog(
             onDismissRequest = { activeReadingDoc = null },
-            modifier = Modifier.fillMaxSize().padding(12.dp),
-            containerColor = readerBg,
-            title = {
-                Column {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = doc.title,
-                            color = colors.textPrimary,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.weight(1f)
-                        )
-                        IconButton(onClick = { activeReadingDoc = null }) {
-                            Icon(imageVector = Icons.Default.Close, contentDescription = "Close", tint = colors.textSecondary)
-                        }
-                    }
-
-                    // Reading Mode Selector
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        ReadingMode.values().forEach { mode ->
-                            val isSelected = readingMode == mode
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(if (isSelected) colors.primaryContainer else colors.surfaceElevated)
-                                    .clickable { readingMode = mode }
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                            ) {
-                                Text(
-                                    text = mode.name,
-                                    color = if (isSelected) colors.primary else colors.textMuted,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.weight(1f))
-                        // Font Sizing
-                        IconButton(
-                            onClick = { readerFontSize = (readerFontSize.value - 1).coerceAtLeast(12f).sp },
-                            modifier = Modifier.size(24.dp)
-                        ) {
-                            Text("A-", color = colors.textMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                        IconButton(
-                            onClick = { readerFontSize = (readerFontSize.value + 1).coerceAtMost(22f).sp },
-                            modifier = Modifier.size(24.dp)
-                        ) {
-                            Text("A+", color = colors.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                    FioDivider(modifier = Modifier.padding(top = 6.dp))
+            properties = androidx.compose.ui.window.DialogProperties(
+                usePlatformDefaultWidth = false,
+                decorFitsSystemWindows = false
+            )
+        ) {
+            FioReaderHost(
+                document = doc,
+                onClose = { percent, position ->
+                    repository.updateReadingProgress(doc.id, percent, position)
+                    activeReadingDoc = null
+                },
+                onProgress = { percent, position ->
+                    repository.updateReadingProgress(doc.id, percent, position)
                 }
-            },
+            )
+        }
+    }
+
+    // Long-press confirmation: remove a document from the library
+    docPendingRemoval?.let { doc ->
+        AlertDialog(
+            onDismissRequest = { docPendingRemoval = null },
+            containerColor = colors.surface,
+            title = { Text("Remove document?", color = colors.textPrimary) },
             text = {
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    if (readingMode == ReadingMode.ACADEMIC) {
-                        item {
-                            FioCard(
-                                backgroundColor = colors.surfaceElevated,
-                                borderColor = colors.border,
-                                padding = PaddingValues(8.dp),
-                                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(imageVector = Icons.Default.Bookmark, contentDescription = null, tint = colors.primary, modifier = Modifier.size(14.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Academic Mode: Annotations & schedule reading session", color = colors.textSecondary, fontSize = 11.sp)
-                                    Spacer(modifier = Modifier.weight(1f))
-                                    TextButton(
-                                        onClick = {
-                                            val now = System.currentTimeMillis()
-                                            repository.addEvent(
-                                                ScheduleEvent(
-                                                    title = "Read: ${doc.title}",
-                                                    startTimeMillis = now + (60 * 60 * 1000L),
-                                                    endTimeMillis = now + (110 * 60 * 1000L),
-                                                    type = EventType.STUDY
-                                                )
-                                            )
-                                            Toast.makeText(context, "Added to Calendar Schedule", Toast.LENGTH_SHORT).show()
-                                        }
-                                    ) {
-                                        Text("+ Schedule", color = colors.primary, fontSize = 11.sp)
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    item {
-                        Text(
-                            text = doc.content,
-                            color = if (isLeisure) Color(0xFFE4E4E7) else colors.textPrimary,
-                            fontSize = readerFontSize,
-                            lineHeight = (readerFontSize.value * 1.5).sp,
-                            fontFamily = if (isLeisure) FontFamily.Serif else FontFamily.Default
-                        )
-                    }
-                }
+                Text(
+                    text = "\u201c${doc.title}\u201d will be removed from your library. This cannot be undone.",
+                    color = colors.textSecondary
+                )
             },
             confirmButton = {
-                TextButton(onClick = { activeReadingDoc = null }) {
-                    Text("Done Reading", color = colors.primary)
+                TextButton(onClick = {
+                    repository.removeDocument(doc.id)
+                    if (activeReadingDoc?.id == doc.id) activeReadingDoc = null
+                    docPendingRemoval = null
+                }) {
+                    Text("Remove", color = colors.error, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { docPendingRemoval = null }) {
+                    Text("Cancel", color = colors.textMuted)
                 }
             }
         )
@@ -428,9 +366,9 @@ fun StudyCompanionScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(14.dp))
                     .background(colors.surface)
-                    .border(1.dp, colors.border, RoundedCornerShape(8.dp))
+                    .border(1.dp, colors.border, RoundedCornerShape(14.dp))
                     .padding(4.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
@@ -439,7 +377,7 @@ fun StudyCompanionScreen(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(6.dp))
+                            .clip(RoundedCornerShape(12.dp))
                             .background(if (isSelected) colors.primaryContainer else Color.Transparent)
                             .clickable { selectedSection = sec }
                             .padding(vertical = 8.dp),
@@ -475,7 +413,7 @@ fun StudyCompanionScreen(
                     modifier = Modifier.testTag("add_course_button"),
                     colors = ButtonDefaults.buttonColors(containerColor = colors.primaryContainer),
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                    shape = RoundedCornerShape(6.dp)
+                    shape = RoundedCornerShape(12.dp)
                 ) {
                     Icon(imageVector = Icons.Default.Add, contentDescription = "Add Course", tint = colors.primary, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
@@ -507,9 +445,9 @@ fun StudyCompanionScreen(
                         val isSelected = c.id == selectedCourseId
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
+                                .clip(RoundedCornerShape(12.dp))
                                 .background(if (isSelected) colors.primaryContainer else colors.surface)
-                                .border(1.dp, if (isSelected) colors.primary else colors.border, RoundedCornerShape(6.dp))
+                                .border(1.dp, if (isSelected) colors.primary else colors.border, RoundedCornerShape(12.dp))
                                 .clickable { selectedCourseId = c.id }
                                 .padding(horizontal = 12.dp, vertical = 8.dp)
                         ) {
@@ -564,7 +502,7 @@ fun StudyCompanionScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(6.dp))
+                            .clip(RoundedCornerShape(12.dp))
                             .background(colors.surface)
                             .padding(horizontal = 8.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -589,7 +527,7 @@ fun StudyCompanionScreen(
                             )
                         },
                         modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
+                            .clip(RoundedCornerShape(12.dp))
                             .background(colors.surface)
                     ) {
                         Icon(imageVector = Icons.Default.AddPhotoAlternate, contentDescription = "Attach Image", tint = if (coursePhotoUri != null) colors.primary else colors.textMuted)
@@ -662,7 +600,7 @@ fun StudyCompanionScreen(
                         },
                         enabled = currentCourse != null && !isAiLoading,
                         modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
+                            .clip(RoundedCornerShape(12.dp))
                             .background(colors.primaryContainer)
                             .testTag("course_ai_query_submit")
                     ) {
@@ -701,7 +639,7 @@ fun StudyCompanionScreen(
                                 Toast.makeText(context, "Import documents first to generate flashcards", Toast.LENGTH_SHORT).show()
                             }
                         },
-                        shape = RoundedCornerShape(6.dp),
+                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.weight(1f)
                     ) {
                         Text("+ Flashcards", fontSize = 10.sp, color = colors.primary)
@@ -727,7 +665,7 @@ fun StudyCompanionScreen(
                                 Toast.makeText(context, "Import documents first to generate study guide", Toast.LENGTH_SHORT).show()
                             }
                         },
-                        shape = RoundedCornerShape(6.dp),
+                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.weight(1f)
                     ) {
                         Text("Study Guide", fontSize = 10.sp, color = colors.primary)
@@ -769,9 +707,9 @@ fun StudyCompanionScreen(
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clip(RoundedCornerShape(6.dp))
+                                        .clip(RoundedCornerShape(12.dp))
                                         .background(if (isUser) colors.surface else colors.background)
-                                        .border(1.dp, if (isUser) colors.border else colors.primary.copy(alpha = 0.3f), RoundedCornerShape(6.dp))
+                                        .border(1.dp, if (isUser) colors.border else colors.primary.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
                                         .padding(8.dp)
                                 ) {
                                     Row(
@@ -820,9 +758,6 @@ fun StudyCompanionScreen(
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold
                     )
-                    if (isImportingDocs) {
-                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = colors.primary, strokeWidth = 2.dp)
-                    }
                 }
 
                 Spacer(modifier = Modifier.height(6.dp))
@@ -854,7 +789,7 @@ fun StudyCompanionScreen(
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
-                        shape = RoundedCornerShape(6.dp),
+                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.weight(1f).testTag("import_doc_picker_button"),
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
                     ) {
@@ -871,12 +806,62 @@ fun StudyCompanionScreen(
                                 Toast.makeText(context, "Create or select a subject above first", Toast.LENGTH_SHORT).show()
                             }
                         },
-                        shape = RoundedCornerShape(6.dp),
+                        shape = RoundedCornerShape(12.dp),
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
                     ) {
                         Icon(imageVector = Icons.Default.EditNote, contentDescription = null, tint = colors.textSecondary, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
                         Text("Paste Text", color = colors.textSecondary, fontSize = 11.sp)
+                    }
+                }
+            }
+        }
+
+        if (isImportingDocs) {
+            item(key = "import_progress") {
+                FioCard(
+                    backgroundColor = colors.surface,
+                    borderColor = colors.primary.copy(alpha = 0.4f),
+                    padding = PaddingValues(14.dp)
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "Importing documents",
+                                color = colors.textPrimary,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Text(
+                                text = "$importDone / $importTotal",
+                                color = colors.primary,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LinearProgressIndicator(
+                            progress = {
+                                if (importTotal > 0) importDone.toFloat() / importTotal.toFloat() else 0f
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(6.dp)
+                                .clip(RoundedCornerShape(3.dp)),
+                            color = colors.primary,
+                            trackColor = colors.surfaceElevated
+                        )
+                        if (importCurrentFile.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(7.dp))
+                            Text(
+                                text = "Processing $importCurrentFile\u2026",
+                                color = colors.textMuted,
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
             }
@@ -917,7 +902,12 @@ fun StudyCompanionScreen(
                     padding = PaddingValues(12.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { activeReadingDoc = doc }
+                        .pointerInput(doc.id) {
+                            detectTapGestures(
+                                onTap = { activeReadingDoc = doc },
+                                onLongPress = { docPendingRemoval = doc }
+                            )
+                        }
                         .testTag("doc_item_${doc.id}")
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -925,7 +915,9 @@ fun StudyCompanionScreen(
                             imageVector = when (doc.format) {
                                 "PDF" -> Icons.Default.PictureAsPdf
                                 "EPUB" -> Icons.Default.MenuBook
+                                "FB2" -> Icons.Default.MenuBook
                                 "SPREADSHEET" -> Icons.Default.TableChart
+                                "SLIDES" -> Icons.Default.Slideshow
                                 "DOCX" -> Icons.Default.Description
                                 else -> Icons.Default.Article
                             },
@@ -999,7 +991,7 @@ fun StudyCompanionScreen(
                                     revealed = false
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = colors.success),
-                                shape = RoundedCornerShape(4.dp),
+                                shape = RoundedCornerShape(10.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Text("I Knew It", color = Color.White, fontSize = 11.sp)
@@ -1010,7 +1002,7 @@ fun StudyCompanionScreen(
                                     revealed = false
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = colors.error),
-                                shape = RoundedCornerShape(4.dp),
+                                shape = RoundedCornerShape(10.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Text("Forgot", color = Color.White, fontSize = 11.sp)

@@ -1,4 +1,4 @@
-package com.example.fio.ui.components
+﻿package com.example.fio.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.fio.data.model.ProposedScheduleChange
@@ -34,6 +35,7 @@ enum class FioScreen(val title: String, val icon: ImageVector) {
     TUTOR("Tutor & Practice", Icons.Default.School),
     TIMER("Timer & Lockdown", Icons.Default.Timer),
     NOTES("Notes & Graph", Icons.Default.EditNote),
+    GALLERY("Gallery", Icons.Default.Collections),
     HEALTH("Sleep & Meals", Icons.Default.Favorite),
     STATS("Stats & Life Score", Icons.Default.Analytics),
     SETTINGS("Settings", Icons.Default.Settings)
@@ -44,6 +46,7 @@ fun FioTopBar(
     title: String,
     onOpenNav: () -> Unit,
     modifier: Modifier = Modifier,
+    showMenu: Boolean = true,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     val colors = LocalFioColors.current
@@ -57,45 +60,31 @@ fun FioTopBar(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(
-                    onClick = onOpenNav,
-                    modifier = Modifier.testTag("nav_drawer_toggle")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Menu,
-                        contentDescription = "Open Navigation Menu",
-                        tint = colors.textPrimary
-                    )
+                if (showMenu) {
+                    IconButton(
+                        onClick = onOpenNav,
+                        modifier = Modifier.testTag("nav_drawer_toggle")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Menu,
+                            contentDescription = "Open Navigation Menu",
+                            tint = colors.textPrimary
+                        )
+                    }
                 }
-
-                // Obsidian Eye Logo Indicator
-                Box(
-                    modifier = Modifier
-                        .size(28.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(colors.surfaceElevated)
-                        .border(1.dp, colors.primary.copy(alpha = 0.5f), RoundedCornerShape(6.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Visibility,
-                        contentDescription = "Fio Logo",
-                        tint = colors.primary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(12.dp))
 
                 Text(
                     text = title,
                     color = colors.textPrimary,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = if (showMenu) 0.dp else 6.dp)
+                        .clickable(onClick = onOpenNav)
                 )
 
                 Row(
@@ -113,8 +102,8 @@ fun FioDivider(modifier: Modifier = Modifier) {
     val colors = LocalFioColors.current
     HorizontalDivider(
         modifier = modifier,
-        thickness = 1.dp,
-        color = colors.border
+        thickness = 0.7.dp,
+        color = colors.border.copy(alpha = 0.65f)
     )
 }
 
@@ -124,13 +113,15 @@ fun FioCard(
     backgroundColor: Color = LocalFioColors.current.surface,
     borderColor: Color = LocalFioColors.current.border,
     padding: PaddingValues = PaddingValues(16.dp),
+    cornerRadius: Dp = 20.dp,
     content: @Composable ColumnScope.() -> Unit
 ) {
+    val shape = RoundedCornerShape(cornerRadius)
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
+            .clip(shape)
             .background(backgroundColor)
-            .border(1.dp, borderColor, RoundedCornerShape(8.dp))
+            .border(1.dp, borderColor.copy(alpha = 0.7f), shape)
             .padding(padding)
     ) {
         Column(content = content)
@@ -145,16 +136,16 @@ fun FioBadge(
 ) {
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(color.copy(alpha = 0.15f))
-            .border(0.5.dp, color.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
-            .padding(horizontal = 6.dp, vertical = 2.dp)
+            .clip(RoundedCornerShape(50))
+            .background(color.copy(alpha = 0.14f))
+            .padding(horizontal = 9.dp, vertical = 3.dp)
     ) {
         Text(
             text = text,
             color = color,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Medium
+            fontSize = 10.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 0.3.sp
         )
     }
 }
@@ -178,31 +169,13 @@ fun FioSidebarDrawer(
                 .fillMaxSize()
                 .padding(vertical = 16.dp, horizontal = 12.dp)
         ) {
-            // Header with App Identity & User Profile
+            // Header with user profile (no logo — clean)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 8.dp, vertical = 12.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(colors.primaryContainer)
-                        .border(1.dp, colors.primary, RoundedCornerShape(8.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Visibility,
-                        contentDescription = "Fio Eye Logo",
-                        tint = colors.primary,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(12.dp))
-
                 Column {
                     Text(
                         text = if (profileName.isNotBlank()) profileName else "Fio",
@@ -212,7 +185,7 @@ fun FioSidebarDrawer(
                         letterSpacing = 0.5.sp
                     )
                     Text(
-                        text = if (profileName.isNotBlank()) "Personal Life Planner" else "effio • to realize & know",
+                        text = if (profileName.isNotBlank()) "Personal Life Planner" else "effio â€¢ to realize & know",
                         color = colors.textMuted,
                         fontSize = 11.sp
                     )
@@ -255,6 +228,7 @@ fun FioSidebarDrawer(
                 NavItem(FioScreen.STUDY, currentScreen, onSelectScreen, onClose)
                 NavItem(FioScreen.TUTOR, currentScreen, onSelectScreen, onClose)
                 NavItem(FioScreen.NOTES, currentScreen, onSelectScreen, onClose)
+                NavItem(FioScreen.GALLERY, currentScreen, onSelectScreen, onClose)
 
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
@@ -294,13 +268,13 @@ private fun NavItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(6.dp))
+            .clip(RoundedCornerShape(14.dp))
             .background(background)
             .clickable {
                 onSelectScreen(screen)
                 onClose()
             }
-            .padding(horizontal = 12.dp, vertical = 10.dp)
+            .padding(horizontal = 12.dp, vertical = 11.dp)
             .testTag("nav_item_${screen.name.lowercase()}"),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -397,7 +371,7 @@ fun AiScheduleProposalDialog(
             Button(
                 onClick = onConfirm,
                 colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
-                shape = RoundedCornerShape(6.dp),
+                shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.testTag("confirm_proposal_button")
             ) {
                 Text("Confirm & Apply", color = Color.White, fontSize = 13.sp)

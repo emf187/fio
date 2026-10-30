@@ -8,13 +8,45 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
+import java.util.concurrent.Executors
 import kotlin.math.roundToInt
 
 class FioRepository(private val context: Context) {
     private val prefs: SharedPreferences =
         context.getSharedPreferences("fio_storage_v2", Context.MODE_PRIVATE)
+
+    /**
+     * Document bodies (books, PDFs, docs) live in their own files instead of the
+     * SharedPreferences blob. This keeps every save/load a few KB instead of many MB,
+     * which is what made the app feel slow and janky before.
+     */
+    private val docsDir = File(context.filesDir, "fio_doc_content")
+    private val ioExecutor = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "fio-doc-io")
+    }
+
+    private fun contentFile(docId: String): File = File(docsDir, "$docId.txt")
+
+    private fun writeContentFile(docId: String, content: String) {
+        if (content.isBlank()) return
+        try {
+            if (!docsDir.exists()) docsDir.mkdirs()
+            contentFile(docId).writeText(content)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun deleteContentFile(docId: String) {
+        try {
+            contentFile(docId).delete()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
 
     private val _events = MutableStateFlow<List<ScheduleEvent>>(emptyList())
     val events: StateFlow<List<ScheduleEvent>> = _events.asStateFlow()
@@ -52,6 +84,11 @@ class FioRepository(private val context: Context) {
     private val _chatHistory = MutableStateFlow<List<ChatMessage>>(emptyList())
     val chatHistory: StateFlow<List<ChatMessage>> = _chatHistory.asStateFlow()
 
+    private val _galleryImages = MutableStateFlow<List<GalleryImage>>(emptyList())
+    val galleryImages: StateFlow<List<GalleryImage>> = _galleryImages.asStateFlow()
+
+    private val galleryDir = File(context.filesDir, "fio_gallery")
+
     private val _settings = MutableStateFlow(AppSettings())
     val settings: StateFlow<AppSettings> = _settings.asStateFlow()
 
@@ -66,7 +103,8 @@ class FioRepository(private val context: Context) {
         _profileName.value = prefs.getString("profile_name", "") ?: ""
         val json = prefs.getString("backup_json", null)
         if (!json.isNullOrBlank()) {
-            importFromJson(json)
+            parseState(json)
+            hydrateDocumentContents()
         }
         // Load settings
         _settings.value = AppSettings(
@@ -75,6 +113,7 @@ class FioRepository(private val context: Context) {
             aiApiKey = prefs.getString("ai_api_key", "") ?: "",
             aiModelName = prefs.getString("ai_model_name", "google/gemini-2.0-flash-001") ?: "google/gemini-2.0-flash-001",
             theme = prefs.getString("app_theme", "OBSIDIAN_PURPLE") ?: "OBSIDIAN_PURPLE",
+            accentColor = prefs.getString("accent_color", "PURPLE") ?: "PURPLE",
             fontScale = prefs.getFloat("font_scale", 1.0f),
             reduceMotion = prefs.getBoolean("reduce_motion", false),
             gracePeriodSeconds = prefs.getInt("grace_period", 15),
@@ -83,6 +122,45 @@ class FioRepository(private val context: Context) {
             sleepTargetHours = prefs.getFloat("sleep_target", 8.0f).toDouble(),
             mealTargetCount = prefs.getInt("meal_target", 3)
         )
+        _galleryImages.value = loadGalleryImages()
+    }
+
+    /**
+     * Fills document bodies from their side files at startup (and migrates any legacy
+     * inline content out of prefs once). Raw file IO only - no JSON parsing - so cold
+     * start stays fast even with a large library.
+     */
+    private fun hydrateDocumentContents() {
+        val current = _documents.value
+        if (current.isEmpty()) return
+        var changed = false
+        val updated = current.map { doc ->
+            var content = doc.content
+            var dirty = false
+            val file = contentFile(doc.id)
+            if (content.isBlank()) {
+                if (file.exists()) {
+                    content = runCatching { file.readText() }.getOrNull() ?: ""
+                    dirty = true
+                }
+            } else if (!file.exists()) {
+                // Legacy data stored the full text inside prefs: move it to a side file
+                // so the prefs blob stays small from now on.
+                writeContentFile(doc.id, content)
+            }
+            val chunks = if (doc.chunks.isEmpty() && content.isNotBlank()) {
+                deriveDocumentChunks(doc.title, content)
+            } else {
+                doc.chunks
+            }
+            if (dirty || chunks !== doc.chunks) {
+                changed = true
+                doc.copy(content = content, chunks = chunks)
+            } else {
+                doc
+            }
+        }
+        if (changed) _documents.value = updated
     }
 
     // --- Life Score Engine (Section 12 of spec) - Zero mock, purely user-driven ---
@@ -201,6 +279,63 @@ class FioRepository(private val context: Context) {
             _chatHistory.value.filterNot { it.courseId == courseId }
         } else emptyList()
         saveAll()
+    }
+
+    // --- Gallery (stored pictures) ---
+    fun galleryFile(image: GalleryImage): File = File(galleryDir, image.fileName)
+
+    fun galleryDirectory(): File = galleryDir
+
+    fun addGalleryImages(images: List<GalleryImage>) {
+        if (images.isEmpty()) return
+        _galleryImages.value = images + _galleryImages.value
+        saveGalleryImages()
+    }
+
+    fun removeGalleryImage(id: String) {
+        val target = _galleryImages.value.firstOrNull { it.id == id } ?: return
+        _galleryImages.value = _galleryImages.value.filterNot { it.id == id }
+        saveGalleryImages()
+        ioExecutor.execute { runCatching { File(galleryDir, target.fileName).delete() } }
+    }
+
+    private fun loadGalleryImages(): List<GalleryImage> {
+        val raw = prefs.getString("gallery_images", null) ?: return emptyList()
+        return try {
+            val array = JSONArray(raw)
+            val list = mutableListOf<GalleryImage>()
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                list.add(
+                    GalleryImage(
+                        id = obj.optString("id", UUID.randomUUID().toString()),
+                        fileName = obj.getString("fileName"),
+                        displayName = obj.optString("displayName", ""),
+                        mimeType = obj.optString("mimeType", "image/*"),
+                        addedAtMillis = obj.optLong("addedAtMillis", currentTimestamp())
+                    )
+                )
+            }
+            list
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun saveGalleryImages() {
+        val array = JSONArray()
+        for (img in _galleryImages.value) {
+            array.put(
+                JSONObject().apply {
+                    put("id", img.id)
+                    put("fileName", img.fileName)
+                    put("displayName", img.displayName)
+                    put("mimeType", img.mimeType)
+                    put("addedAtMillis", img.addedAtMillis)
+                }
+            )
+        }
+        prefs.edit().putString("gallery_images", array.toString()).apply()
     }
 
     // --- Schedule & Calendar Operations ---
@@ -354,6 +489,19 @@ class FioRepository(private val context: Context) {
 
     fun addDocument(document: StudyDocument) {
         _documents.value = _documents.value + document
+        if (document.content.isNotBlank()) {
+            val docId = document.id
+            val body = document.content
+            // Body file write happens off the main thread; the metadata snapshot below
+            // is tiny and synchronous so the document shows up (and survives) immediately.
+            ioExecutor.execute { writeContentFile(docId, body) }
+        }
+        saveAll()
+    }
+
+    fun removeDocument(docId: String) {
+        _documents.value = _documents.value.filterNot { it.id == docId }
+        ioExecutor.execute { deleteContentFile(docId) }
         saveAll()
     }
 
@@ -409,6 +557,7 @@ class FioRepository(private val context: Context) {
             .putString("ai_api_key", s.aiApiKey)
             .putString("ai_model_name", s.aiModelName)
             .putString("app_theme", s.theme)
+            .putString("accent_color", s.accentColor)
             .putFloat("font_scale", s.fontScale)
             .putBoolean("reduce_motion", s.reduceMotion)
             .putInt("grace_period", s.gracePeriodSeconds)
@@ -427,9 +576,13 @@ class FioRepository(private val context: Context) {
     }
 
     // --- Comprehensive Export / Import (All books, documents, progress, and records) ---
-    fun exportAllToJson(): String {
+
+    /** Full, human-readable backup (includes document bodies). Used by Settings export. */
+    fun exportAllToJson(): String = buildExportJson(pretty = true, includeDocumentContents = true)
+
+    private fun buildExportJson(pretty: Boolean, includeDocumentContents: Boolean): String {
         val root = JSONObject()
-        root.put("version", 3)
+        root.put("version", 4)
         root.put("exportedAt", currentTimestamp())
         root.put("profileName", _profileName.value)
 
@@ -500,7 +653,9 @@ class FioRepository(private val context: Context) {
         }
         root.put("courses", coursesArray)
 
-        // 5. Export books & documents data (content, reading progress, chunks, highlights)
+        // 5. Export books & documents data (content, reading progress, highlights)
+        //    Document bodies are only embedded for user-facing backups; the regular
+        //    in-app snapshot keeps them in side files so saves stay tiny.
         val docsArray = JSONArray()
         for (d in _documents.value) {
             val obj = JSONObject()
@@ -509,7 +664,9 @@ class FioRepository(private val context: Context) {
             obj.put("title", d.title)
             obj.put("author", d.author)
             obj.put("format", d.format)
-            obj.put("content", d.content)
+            if (includeDocumentContents) {
+                obj.put("content", d.content)
+            }
             obj.put("readingProgressPercent", d.readingProgressPercent)
             obj.put("lastReadPosition", d.lastReadPosition)
             obj.put("loggedAtMillis", d.loggedAtMillis)
@@ -518,16 +675,6 @@ class FioRepository(private val context: Context) {
             val highlightsArray = JSONArray()
             d.highlights.forEach { highlightsArray.put(it) }
             obj.put("highlights", highlightsArray)
-
-            val chunksArray = JSONArray()
-            for (chk in d.chunks) {
-                val cObj = JSONObject()
-                cObj.put("id", chk.id)
-                cObj.put("title", chk.title)
-                cObj.put("text", chk.text)
-                chunksArray.put(cObj)
-            }
-            obj.put("chunks", chunksArray)
 
             docsArray.put(obj)
         }
@@ -665,10 +812,22 @@ class FioRepository(private val context: Context) {
         settingsObj.put("mealTargetCount", s.mealTargetCount)
         root.put("settings", settingsObj)
 
-        return root.toString(2)
+        return if (pretty) root.toString(2) else root.toString()
     }
 
     fun importFromJson(jsonString: String): Boolean {
+        val success = parseState(jsonString)
+        if (success) {
+            // Persist every restored document body to its side file, then snapshot.
+            _documents.value.forEach { doc ->
+                if (doc.content.isNotBlank()) writeContentFile(doc.id, doc.content)
+            }
+            saveAll()
+        }
+        return success
+    }
+
+    private fun parseState(jsonString: String): Boolean {
         return try {
             val root = JSONObject(jsonString)
 
@@ -783,7 +942,10 @@ class FioRepository(private val context: Context) {
                 val list = mutableListOf<StudyDocument>()
                 for (i in 0 until array.length()) {
                     val obj = array.getJSONObject(i)
-                    val content = obj.getString("content")
+                    val title = obj.getString("title")
+                    // Content is optional in the snapshot: the regular in-app backup keeps
+                    // bodies in side files (filled in afterwards by hydrateDocumentContents).
+                    val content = obj.optString("content", "")
 
                     val chunksList = mutableListOf<DocumentChunk>()
                     if (obj.has("chunks")) {
@@ -799,10 +961,8 @@ class FioRepository(private val context: Context) {
                             )
                         }
                     }
-                    if (chunksList.isEmpty()) {
-                        content.chunked(600).forEachIndexed { idx, chk ->
-                            chunksList.add(DocumentChunk("chk_$idx", "Part ${idx + 1}", chk))
-                        }
+                    if (chunksList.isEmpty() && content.isNotBlank()) {
+                        chunksList.addAll(deriveDocumentChunks(title, content))
                     }
 
                     val highlightsList = mutableListOf<String>()
@@ -817,7 +977,7 @@ class FioRepository(private val context: Context) {
                         StudyDocument(
                             id = obj.optString("id", UUID.randomUUID().toString()),
                             courseId = obj.getString("courseId"),
-                            title = obj.getString("title"),
+                            title = title,
                             author = obj.optString("author", ""),
                             format = obj.optString("format", "TXT"),
                             content = content,
@@ -1020,7 +1180,6 @@ class FioRepository(private val context: Context) {
                 saveSettingsToPrefs(updatedSettings)
             }
 
-            saveAll()
             true
         } catch (e: Exception) {
             e.printStackTrace()
@@ -1028,8 +1187,13 @@ class FioRepository(private val context: Context) {
         }
     }
 
+    /**
+     * Snapshots app state. Document bodies live in side files, so this payload is a few
+     * KB of metadata rather than the whole library - cheap enough to run synchronously
+     * on every mutation without janking the UI.
+     */
     private fun saveAll() {
-        val json = exportAllToJson()
+        val json = buildExportJson(pretty = false, includeDocumentContents = false)
         prefs.edit().putString("backup_json", json).apply()
     }
 }

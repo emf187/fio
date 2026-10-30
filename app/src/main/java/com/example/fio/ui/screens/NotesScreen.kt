@@ -33,6 +33,7 @@ import com.example.fio.ui.components.FioBadge
 import com.example.fio.ui.components.FioCard
 import com.example.fio.ui.components.FioDivider
 import com.example.fio.ui.theme.LocalFioColors
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -49,6 +50,29 @@ fun NotesScreen(repository: FioRepository) {
     var editingNote by remember { mutableStateOf<NoteItem?>(null) }
     var isPreviewMode by remember { mutableStateOf(false) }
 
+    // Debounced editor persistence: typtng updates the screen tnstantly and only
+    // sertaltzes to disk once the user pauses, so long notes never lag keystrokes.
+    var pendingNoteSave by remember { mutableStateOf<NoteItem?>(null) }
+
+    fun queueNoteSave(updated: NoteItem) {
+        val previous = pendingNoteSave
+        if (previous != null && previous.id != updated.id) {
+            repository.saveNote(previous) // switching notes: flush the old one now
+        }
+        pendingNoteSave = updated
+    }
+
+    LaunchedEffect(pendingNoteSave) {
+        val pending = pendingNoteSave ?: return@LaunchedEffect
+        delay(600)
+        repository.saveNote(pending)
+        if (pendingNoteSave === pending) pendingNoteSave = null
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { pendingNoteSave?.let { repository.saveNote(it) } }
+    }
+
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia(),
         onResult = { uri ->
@@ -61,6 +85,7 @@ fun NotesScreen(repository: FioRepository) {
                         val updatedContent = note.content + "\n\n![Image Attachment]($storedPath)"
                         val updated = note.copy(imageUris = updatedUris, content = updatedContent)
                         editingNote = updated
+                        pendingNoteSave = null
                         repository.saveNote(updated)
                     }
                 }
@@ -99,6 +124,7 @@ fun NotesScreen(repository: FioRepository) {
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 IconButton(onClick = {
+                    pendingNoteSave = null
                     repository.saveNote(note)
                     editingNote = null
                 }, modifier = Modifier.testTag("back_from_note_button")) {
@@ -126,6 +152,7 @@ fun NotesScreen(repository: FioRepository) {
 
                     // Delete Note
                     IconButton(onClick = {
+                        pendingNoteSave = null
                         repository.deleteNote(note.id)
                         editingNote = null
                     }) {
@@ -142,7 +169,7 @@ fun NotesScreen(repository: FioRepository) {
                 onValueChange = { newTitle ->
                     val updated = note.copy(title = newTitle)
                     editingNote = updated
-                    repository.saveNote(updated)
+                    queueNoteSave(updated)
                 },
                 placeholder = { Text("Note Title", color = colors.textMuted, fontSize = 18.sp, fontWeight = FontWeight.Bold) },
                 singleLine = true,
@@ -173,7 +200,7 @@ fun NotesScreen(repository: FioRepository) {
                         val extractedTags = Regex("#([a-zA-Z0-9_-]+)").findAll(newContent).map { it.groupValues[1] }.toList()
                         val updated = note.copy(content = newContent, tags = extractedTags)
                         editingNote = updated
-                        repository.saveNote(updated)
+                        queueNoteSave(updated)
                     },
                     placeholder = { Text("Write in Obsidian Markdown...\nUse [[links]] to connect notes\nUse #tags to organize\nUse **bold** and # headers", color = colors.textMuted) },
                     modifier = Modifier.fillMaxSize().testTag("note_content_editor"),
@@ -203,7 +230,7 @@ fun NotesScreen(repository: FioRepository) {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clip(RoundedCornerShape(4.dp))
+                                        .clip(RoundedCornerShape(10.dp))
                                         .background(colors.surfaceElevated)
                                         .padding(8.dp)
                                 ) {
@@ -220,19 +247,22 @@ fun NotesScreen(repository: FioRepository) {
                                         Text(line.substring(0, match.range.first), color = colors.textPrimary, fontSize = 13.sp)
                                         Box(
                                             modifier = Modifier
-                                                .clip(RoundedCornerShape(4.dp))
+                                                .clip(RoundedCornerShape(10.dp))
                                                 .background(colors.primaryContainer)
-                                                .border(0.5.dp, colors.primary, RoundedCornerShape(4.dp))
+                                                .border(0.5.dp, colors.primary, RoundedCornerShape(10.dp))
                                                 .clickable {
-                                                    // Navigate to existing note or create one!
-                                                    val existing = notes.find { it.title.equals(linkedTitle, ignoreCase = true) }
-                                                    if (existing != null) {
-                                                        editingNote = existing
-                                                    } else {
-                                                        val newLinked = NoteItem(title = linkedTitle, content = "# $linkedTitle\n\nLinked from [[${note.title}]]")
-                                                        repository.saveNote(newLinked)
-                                                        editingNote = newLinked
-                                                    }
+                                                    // Persist whatever is still queued for the open note first.
+                            pendingNoteSave?.let { repository.saveNote(it) }
+                            pendingNoteSave = null
+                            // Navigate to existing note or create one!
+                            val existing = notes.find { it.title.equals(linkedTitle, ignoreCase = true) }
+                            if (existing != null) {
+                                editingNote = existing
+                            } else {
+                                val newLinked = NoteItem(title = linkedTitle, content = "# $linkedTitle\n\nLinked from [[${note.title}]]")
+                                repository.saveNote(newLinked)
+                                editingNote = newLinked
+                            }
                                                 }
                                                 .padding(horizontal = 6.dp, vertical = 2.dp)
                                         ) {
@@ -270,7 +300,7 @@ fun NotesScreen(repository: FioRepository) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text("Obsidian Notes & Links", color = colors.textPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Text("Notes & Links", color = colors.textPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     Text("Markdown-first knowledge base with [[wikilinks]]", color = colors.textMuted, fontSize = 11.sp)
                 }
 
@@ -281,7 +311,7 @@ fun NotesScreen(repository: FioRepository) {
                         editingNote = newNote
                     },
                     modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
+                        .clip(RoundedCornerShape(12.dp))
                         .background(colors.primary)
                         .testTag("create_new_note_button")
                 ) {
@@ -317,9 +347,9 @@ fun NotesScreen(repository: FioRepository) {
                 ) {
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
+                            .clip(RoundedCornerShape(10.dp))
                             .background(if (selectedTag == null) colors.primaryContainer else colors.surface)
-                            .border(1.dp, if (selectedTag == null) colors.primary else colors.border, RoundedCornerShape(4.dp))
+                            .border(1.dp, if (selectedTag == null) colors.primary else colors.border, RoundedCornerShape(10.dp))
                             .clickable { selectedTag = null }
                             .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
@@ -330,9 +360,9 @@ fun NotesScreen(repository: FioRepository) {
                         val isSelected = selectedTag == tag
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
+                                .clip(RoundedCornerShape(10.dp))
                                 .background(if (isSelected) colors.primaryContainer else colors.surface)
-                                .border(1.dp, if (isSelected) colors.primary else colors.border, RoundedCornerShape(4.dp))
+                                .border(1.dp, if (isSelected) colors.primary else colors.border, RoundedCornerShape(10.dp))
                                 .clickable { selectedTag = if (isSelected) null else tag }
                                 .padding(horizontal = 8.dp, vertical = 4.dp)
                         ) {
@@ -378,8 +408,8 @@ fun NotesScreen(repository: FioRepository) {
                     if (noteItem.tags.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(6.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            noteItem.tags.take(3).forEach { t ->
-                                FioBadge(text = "#$t", color = colors.primary)
+                            noteItem.tags.take(3).forEach { i ->
+                                FioBadge(text = "#$i", color = colors.primary)
                             }
                         }
                     }

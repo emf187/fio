@@ -177,7 +177,7 @@ fun TimerLockdownScreen(repository: FioRepository) {
                 Button(
                     onClick = { showSummaryDialog = false },
                     colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
-                    shape = RoundedCornerShape(6.dp)
+                    shape = RoundedCornerShape(12.dp)
                 ) {
                     Text("Done", color = Color.White)
                 }
@@ -344,7 +344,7 @@ fun TimerLockdownScreen(repository: FioRepository) {
                                     isEmergencyPaused = false
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
-                                shape = RoundedCornerShape(8.dp),
+                                shape = RoundedCornerShape(14.dp),
                                 modifier = Modifier.weight(1f).testTag("start_timer_button")
                             ) {
                                 Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null, tint = Color.White)
@@ -361,7 +361,7 @@ fun TimerLockdownScreen(repository: FioRepository) {
                                     }
                                 },
                                 enabled = !emergencyPauseUsed || isEmergencyPaused,
-                                shape = RoundedCornerShape(8.dp),
+                                shape = RoundedCornerShape(14.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Icon(imageVector = Icons.Default.Pause, contentDescription = null, tint = colors.warning, modifier = Modifier.size(16.dp))
@@ -381,12 +381,39 @@ fun TimerLockdownScreen(repository: FioRepository) {
                                     isInBreak = false
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = colors.surfaceElevated),
-                                shape = RoundedCornerShape(8.dp),
+                                shape = RoundedCornerShape(14.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Text("Stop", color = colors.textPrimary)
                             }
                         }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+                    OutlinedButton(
+                        onClick = {
+                            isRunning = false
+                            isInBreak = false
+                            isEmergencyPaused = false
+                            emergencyPauseUsed = false
+                            emergencyPauseSeconds = 300
+                            secondsRemaining = selectedMinutes * 60
+                            breakSecondsRemaining = settings.breakDurationMinutes * 60
+                            currentStrikesRemaining = startingStrikes
+                            strikesUsedCount = 0
+                            breaksTakenCount = 0
+                        },
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = null,
+                            tint = colors.textSecondary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Reset Timer", color = colors.textSecondary, fontSize = 12.sp)
                     }
                 }
             }
@@ -411,9 +438,9 @@ fun TimerLockdownScreen(repository: FioRepository) {
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .clip(RoundedCornerShape(6.dp))
+                                    .clip(RoundedCornerShape(12.dp))
                                     .background(if (isSelected) colors.primaryContainer else colors.surfaceElevated)
-                                    .border(1.dp, if (isSelected) colors.primary else colors.border, RoundedCornerShape(6.dp))
+                                    .border(1.dp, if (isSelected) colors.primary else colors.border, RoundedCornerShape(12.dp))
                                     .clickable { selectedMinutes = mins }
                                     .padding(vertical = 8.dp),
                                 contentAlignment = Alignment.Center

@@ -48,6 +48,7 @@ class MainActivity : ComponentActivity() {
 
             FioTheme(
                 themeName = settings.theme,
+                accentColor = settings.accentColor,
                 reduceMotion = settings.reduceMotion
             ) {
                 FioAppContent(
@@ -230,6 +231,9 @@ fun FioAppContent(
                         repository = repository
                     )
                     FioScreen.NOTES -> NotesScreen(
+                        repository = repository
+                    )
+                    FioScreen.GALLERY -> GalleryScreen(
                         repository = repository
                     )
                     FioScreen.HEALTH -> HealthTrackingScreen(

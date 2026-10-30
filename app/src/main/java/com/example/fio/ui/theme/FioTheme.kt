@@ -1,13 +1,16 @@
 package com.example.fio.ui.theme
 
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 
 // Obsidian-style palette
 val ObsidianBg = Color(0xFF111113)
@@ -87,6 +90,7 @@ val LocalReduceMotion = staticCompositionLocalOf { false }
 @Composable
 fun FioTheme(
     themeName: String = "OBSIDIAN_PURPLE",
+    accentColor: String = "PURPLE",
     reduceMotion: Boolean = false,
     content: @Composable () -> Unit
 ) {
@@ -154,33 +158,70 @@ fun FioTheme(
     }
 
     val isLight = themeName == "OBSIDIAN_LIGHT"
+    val (accentPrimary, accentContainer) = accentPalette(accentColor, isLight)
+    val themedColors = customColors.copy(
+        primary = accentPrimary,
+        primaryContainer = accentContainer
+    )
     val colorScheme = if (isLight) {
         lightColorScheme(
-            background = customColors.background,
-            surface = customColors.surface,
-            primary = customColors.primary,
+            background = themedColors.background,
+            surface = themedColors.surface,
+            primary = themedColors.primary,
             onPrimary = Color.White,
-            onBackground = customColors.textPrimary,
-            onSurface = customColors.textPrimary
+            onBackground = themedColors.textPrimary,
+            onSurface = themedColors.textPrimary
         )
     } else {
         darkColorScheme(
-            background = customColors.background,
-            surface = customColors.surface,
-            primary = customColors.primary,
+            background = themedColors.background,
+            surface = themedColors.surface,
+            primary = themedColors.primary,
             onPrimary = Color(0xFF120C24),
-            onBackground = customColors.textPrimary,
-            onSurface = customColors.textPrimary
+            onBackground = themedColors.textPrimary,
+            onSurface = themedColors.textPrimary
         )
     }
 
     CompositionLocalProvider(
-        LocalFioColors provides customColors,
+        LocalFioColors provides themedColors,
         LocalReduceMotion provides reduceMotion
     ) {
         MaterialTheme(
             colorScheme = colorScheme,
+            shapes = FioShapes,
             content = content
         )
     }
+}
+
+/** Soft, generously rounded geometry so the app feels hand-crafted, not boxy. */
+val FioShapes = Shapes(
+    extraSmall = RoundedCornerShape(10.dp),
+    small = RoundedCornerShape(12.dp),
+    medium = RoundedCornerShape(16.dp),
+    large = RoundedCornerShape(22.dp),
+    extraLarge = RoundedCornerShape(28.dp)
+)
+
+/** Accent choices: returns (primary, primaryContainer) for the current theme. */
+fun accentPalette(name: String, light: Boolean): Pair<Color, Color> = when (name) {
+    "BLUE" -> if (light) Color(0xFF2563EB) to Color(0xFFDBEAFE) else Color(0xFF60A5FA) to Color(0xFF16263D)
+    "TEAL" -> if (light) Color(0xFF0D9488) to Color(0xFFCCFBF1) else Color(0xFF2DD4BF) to Color(0xFF0E2B28)
+    "GREEN" -> if (light) Color(0xFF16A34A) to Color(0xFFDCFCE7) else Color(0xFF4ADE80) to Color(0xFF122E1D)
+    "AMBER" -> if (light) Color(0xFFD97706) to Color(0xFFFEF3C7) else Color(0xFFFBBF24) to Color(0xFF322609)
+    "ROSE" -> if (light) Color(0xFFE11D48) to Color(0xFFFFE4E6) else Color(0xFFFB7185) to Color(0xFF341219)
+    "ORANGE" -> if (light) Color(0xFFEA580C) to Color(0xFFFFEDD5) else Color(0xFFFB923C) to Color(0xFF331B0B)
+    else -> if (light) Color(0xFF6D28D9) to Color(0xFFEDE9FE) else Color(0xFF9D7CFF) to Color(0xFF291E3E)
+}
+
+/** Preview colours for the accent picker in Settings. */
+fun accentSwatch(name: String): Color = when (name) {
+    "BLUE" -> Color(0xFF60A5FA)
+    "TEAL" -> Color(0xFF2DD4BF)
+    "GREEN" -> Color(0xFF4ADE80)
+    "AMBER" -> Color(0xFFFBBF24)
+    "ROSE" -> Color(0xFFFB7185)
+    "ORANGE" -> Color(0xFFFB923C)
+    else -> Color(0xFF9D7CFF)
 }

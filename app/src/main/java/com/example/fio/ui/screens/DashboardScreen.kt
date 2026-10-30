@@ -1,4 +1,4 @@
-package com.example.fio.ui.screens
+﻿package com.example.fio.ui.screens
 
 import android.net.Uri
 import android.widget.Toast
@@ -282,7 +282,7 @@ fun DashboardScreen(
                     onClick = { repository.logMeal("Quick meal") },
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.textPrimary),
                     border = ButtonDefaults.outlinedButtonBorder.copy(brush = androidx.compose.ui.graphics.SolidColor(colors.border)),
-                    shape = RoundedCornerShape(8.dp),
+                    shape = RoundedCornerShape(14.dp),
                     modifier = Modifier
                         .weight(1f)
                         .testTag("quick_meal_button")
@@ -304,7 +304,7 @@ fun DashboardScreen(
                     },
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.textPrimary),
                     border = ButtonDefaults.outlinedButtonBorder.copy(brush = androidx.compose.ui.graphics.SolidColor(colors.border)),
-                    shape = RoundedCornerShape(8.dp),
+                    shape = RoundedCornerShape(14.dp),
                     modifier = Modifier
                         .weight(1.2f)
                         .testTag("quick_sleep_button")
@@ -322,7 +322,7 @@ fun DashboardScreen(
                 Button(
                     onClick = { onNavigate(FioScreen.TIMER) },
                     colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
-                    shape = RoundedCornerShape(8.dp),
+                    shape = RoundedCornerShape(14.dp),
                     modifier = Modifier
                         .weight(1f)
                         .testTag("quick_focus_button")
@@ -367,9 +367,9 @@ fun DashboardScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(6.dp))
+                            .clip(RoundedCornerShape(12.dp))
                             .background(colors.surface)
-                            .border(1.dp, colors.primary.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
+                            .border(1.dp, colors.primary.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
                             .padding(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -402,7 +402,7 @@ fun DashboardScreen(
                             )
                         },
                         modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(14.dp))
                             .background(colors.surface)
                             .testTag("wingman_upload_image_button")
                     ) {
@@ -477,7 +477,7 @@ fun DashboardScreen(
                             }
                         },
                         modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(14.dp))
                             .background(colors.primaryContainer)
                             .testTag("ai_schedule_submit")
                     ) {
@@ -537,7 +537,7 @@ fun DashboardScreen(
                                             agentPendingActions = agentPendingActions - action
                                         },
                                         colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
-                                        shape = RoundedCornerShape(4.dp)
+                                        shape = RoundedCornerShape(10.dp)
                                     ) {
                                         Text("Apply", color = Color.White, fontSize = 11.sp)
                                     }
@@ -558,7 +558,7 @@ fun DashboardScreen(
             ) {
                 Text("Today's Schedule", color = colors.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                 Text(
-                    text = "View Calendar →",
+                    text = "View Calendar â†’",
                     color = colors.primary,
                     fontSize = 12.sp,
                     modifier = Modifier.clickable { onNavigate(FioScreen.CALENDAR) }
@@ -571,7 +571,7 @@ fun DashboardScreen(
                 Text("No events scheduled for today. Add one above or in Calendar.", color = colors.textMuted, fontSize = 12.sp)
             }
         } else {
-            items(events) { event ->
+            items(events, key = { it.id }) { event ->
                 val typeColor = when (event.type) {
                     EventType.STUDY -> colors.primary
                     EventType.GYM, EventType.JOG -> colors.warning
@@ -619,7 +619,7 @@ fun DashboardScreen(
                                 fontSize = 11.sp
                             )
                             Text(
-                                text = "Logged: ${formatTimestamp(event.loggedAtMillis)}${if (event.editedAtMillis != null) " • Edited: ${formatTimestamp(event.editedAtMillis)}" else ""}",
+                                text = "Logged: ${formatTimestamp(event.loggedAtMillis)}${if (event.editedAtMillis != null) " â€¢ Edited: ${formatTimestamp(event.editedAtMillis)}" else ""}",
                                 color = colors.textMuted,
                                 fontSize = 9.sp
                             )
@@ -646,7 +646,7 @@ fun DashboardScreen(
                 Text("No habits added yet. Tap '+ Habit' in Habits & Goals or ask Wingman to create one.", color = colors.textMuted, fontSize = 12.sp)
             }
         } else {
-            items(habits) { habit ->
+            items(habits, key = { it.id }) { habit ->
                 val todayStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
                 val isCompleted = habit.completedDates.contains(todayStr)
 
@@ -701,7 +701,7 @@ fun DashboardScreen(
                 Text("No goals set yet. Set targets in Habits & Goals or ask Wingman.", color = colors.textMuted, fontSize = 12.sp)
             }
         } else {
-            items(goals) { goal ->
+            items(goals, key = { it.id }) { goal ->
                 val progressPercent = ((goal.currentValue / goal.targetValue) * 100).coerceIn(0.0, 100.0)
                 FioCard(
                     backgroundColor = colors.surface,

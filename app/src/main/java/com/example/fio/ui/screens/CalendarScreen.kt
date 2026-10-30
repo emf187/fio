@@ -77,7 +77,7 @@ fun CalendarScreen(repository: FioRepository) {
     // .ics input
     var icsContent by remember { mutableStateOf("") }
 
-    // Synchronize to Phone Calendar / Reminders
+    // Synchrontze to Phone Calendar / Reminders
     fun portEventToDeviceCalendar(event: ScheduleEvent) {
         try {
             val intent = Intent(Intent.ACTION_INSERT).apply {
@@ -171,9 +171,9 @@ fun CalendarScreen(repository: FioRepository) {
                             val isSelected = eventType == type
                             Box(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
+                                    .clip(RoundedCornerShape(12.dp))
                                     .background(if (isSelected) colors.primaryContainer else colors.surfaceElevated)
-                                    .border(1.dp, if (isSelected) colors.primary else colors.border, RoundedCornerShape(6.dp))
+                                    .border(1.dp, if (isSelected) colors.primary else colors.border, RoundedCornerShape(12.dp))
                                     .clickable { eventType = type }
                                     .padding(horizontal = 8.dp, vertical = 6.dp)
                             ) {
@@ -398,14 +398,14 @@ fun CalendarScreen(repository: FioRepository) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     IconButton(
                         onClick = { showIcsImportDialog = true },
-                        modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(colors.surfaceElevated)
+                        modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(colors.surfaceElevated)
                     ) {
                         Icon(imageVector = Icons.Default.FileDownload, contentDescription = "Import .ics", tint = colors.primary)
                     }
 
                     IconButton(
                         onClick = { openEventEditor(null) },
-                        modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(colors.primary).testTag("add_calendar_event_button")
+                        modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(colors.primary).testTag("add_calendar_event_button")
                     ) {
                         Icon(imageVector = Icons.Default.Add, contentDescription = "Add Event", tint = Color.White)
                     }
@@ -540,7 +540,7 @@ fun CalendarScreen(repository: FioRepository) {
                                     modifier = Modifier
                                         .weight(1f)
                                         .height(38.dp)
-                                        .clip(RoundedCornerShape(6.dp))
+                                        .clip(RoundedCornerShape(12.dp))
                                         .background(
                                             when {
                                                 isSelected -> colors.primaryContainer
@@ -551,7 +551,7 @@ fun CalendarScreen(repository: FioRepository) {
                                         .border(
                                             width = if (isSelected) 1.dp else if (isToday) 1.dp else 0.dp,
                                             color = if (isSelected) colors.primary else if (isToday) colors.border else Color.Transparent,
-                                            shape = RoundedCornerShape(6.dp)
+                                            shape = RoundedCornerShape(12.dp)
                                         )
                                         .clickable { selectedDayTimestamp = cellTime }
                                         .padding(2.dp),
@@ -634,7 +634,7 @@ fun CalendarScreen(repository: FioRepository) {
                         Button(
                             onClick = { openEventEditor(null) },
                             colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
-                            shape = RoundedCornerShape(6.dp)
+                            shape = RoundedCornerShape(12.dp)
                         ) {
                             Text("+ Schedule Study / Rest Block Here", color = Color.White, fontSize = 11.sp)
                         }
@@ -668,7 +668,7 @@ fun CalendarScreen(repository: FioRepository) {
                         Column(
                             modifier = Modifier
                                 .weight(1f)
-                                .clickable { openEventEditor(event) } // Edit directly by tapping
+                                .clickable { openEventEditor(event) } // Edit directly by tapptng
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 FioBadge(text = event.type.name, color = typeColor)
@@ -745,7 +745,7 @@ fun CalendarScreen(repository: FioRepository) {
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = colors.warning),
-                    shape = RoundedCornerShape(6.dp),
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth().testTag("sync_phone_reminders_button")
                 ) {
                     Icon(imageVector = Icons.Default.NotificationsActive, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))

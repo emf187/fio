@@ -1,13 +1,17 @@
-package com.example.fio.ui.screens
+﻿package com.example.fio.ui.screens
 
 import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -23,11 +27,13 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.BuildConfig
 import com.example.fio.data.model.AppSettings
 import com.example.fio.data.storage.FioRepository
 import com.example.fio.ui.components.FioCard
 import com.example.fio.ui.components.FioDivider
 import com.example.fio.ui.theme.LocalFioColors
+import com.example.fio.ui.theme.accentSwatch
 
 @Composable
 fun SettingsScreen(repository: FioRepository) {
@@ -36,6 +42,7 @@ fun SettingsScreen(repository: FioRepository) {
     val clipboardManager = LocalClipboardManager.current
     val settings by repository.settings.collectAsState()
     val profileName by repository.profileName.collectAsState()
+    val chatHistory by repository.chatHistory.collectAsState()
 
     // Local mutable state
     var profileNameInput by remember(profileName) { mutableStateOf(profileName) }
@@ -103,7 +110,7 @@ fun SettingsScreen(repository: FioRepository) {
                                     context.startActivity(Intent.createChooser(shareIntent, "Share Fio Profile via Wi-Fi / Quick Share"))
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
-                                shape = RoundedCornerShape(6.dp),
+                                shape = RoundedCornerShape(12.dp),
                                 modifier = Modifier.weight(1.2f)
                             ) {
                                 Icon(imageVector = Icons.Default.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
@@ -118,7 +125,7 @@ fun SettingsScreen(repository: FioRepository) {
                                     Toast.makeText(context, "Backup copied to clipboard", Toast.LENGTH_SHORT).show()
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = colors.surfaceElevated),
-                                shape = RoundedCornerShape(6.dp),
+                                shape = RoundedCornerShape(12.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Icon(imageVector = Icons.Default.ContentCopy, contentDescription = null, tint = colors.primary, modifier = Modifier.size(16.dp))
@@ -213,7 +220,7 @@ fun SettingsScreen(repository: FioRepository) {
                         Toast.makeText(context, "Profile name updated to $trimmed", Toast.LENGTH_SHORT).show()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
-                    shape = RoundedCornerShape(6.dp),
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth().testTag("save_profile_name_button")
                 ) {
                     Text("Update Profile Name", color = Color.White)
@@ -297,7 +304,7 @@ fun SettingsScreen(repository: FioRepository) {
                         Toast.makeText(context, "AI configuration saved", Toast.LENGTH_SHORT).show()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
-                    shape = RoundedCornerShape(6.dp),
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth().testTag("save_ai_settings_button")
                 ) {
                     Text("Save AI Settings", color = Color.White)
@@ -330,7 +337,7 @@ fun SettingsScreen(repository: FioRepository) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(6.dp))
+                                .clip(RoundedCornerShape(12.dp))
                                 .background(if (isSelected) colors.primaryContainer else colors.surfaceElevated)
                                 .clickable {
                                     val updated = settings.copy(theme = id)
@@ -349,6 +356,54 @@ fun SettingsScreen(repository: FioRepository) {
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(text = label, color = if (isSelected) colors.primary else colors.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+                Text("Accent Colour", color = colors.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val accents = listOf(
+                        "PURPLE" to "Purple",
+                        "BLUE" to "Blue",
+                        "TEAL" to "Teal",
+                        "GREEN" to "Green",
+                        "AMBER" to "Amber",
+                        "ROSE" to "Rose",
+                        "ORANGE" to "Orange"
+                    )
+                    accents.forEach { (id, label) ->
+                        val selected = settings.accentColor == id
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(
+                                    if (selected) accentSwatch(id).copy(alpha = 0.18f)
+                                    else colors.surfaceElevated
+                                )
+                                .clickable { repository.updateSettings(settings.copy(accentColor = id)) }
+                                .padding(horizontal = 10.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(12.dp)
+                                    .clip(CircleShape)
+                                    .background(accentSwatch(id))
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = label,
+                                color = if (selected) accentSwatch(id) else colors.textSecondary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium
+                            )
                         }
                     }
                 }
@@ -430,7 +485,7 @@ fun SettingsScreen(repository: FioRepository) {
                         Toast.makeText(context, "Timer rules updated", Toast.LENGTH_SHORT).show()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = colors.surfaceElevated),
-                    shape = RoundedCornerShape(6.dp),
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("Update Lockdown Rules", color = colors.primary)
@@ -457,7 +512,7 @@ fun SettingsScreen(repository: FioRepository) {
                     Button(
                         onClick = { importExportDialogState = "EXPORT" },
                         colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
-                        shape = RoundedCornerShape(6.dp),
+                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.weight(1f).testTag("export_data_button")
                     ) {
                         Icon(imageVector = Icons.Default.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
@@ -470,7 +525,7 @@ fun SettingsScreen(repository: FioRepository) {
                             backupJsonInput = ""
                             importExportDialogState = "IMPORT"
                         },
-                        shape = RoundedCornerShape(6.dp),
+                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.weight(1f).testTag("import_data_button")
                     ) {
                         Icon(imageVector = Icons.Default.Restore, contentDescription = null, tint = colors.textPrimary, modifier = Modifier.size(16.dp))
@@ -502,12 +557,114 @@ fun SettingsScreen(repository: FioRepository) {
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "• Download ZIP: In the Google AI Studio menu (top bar), click 'Export project as ZIP' to download the entire Android project.\n• GitHub Sync: Export directly to your GitHub repository.\n• APK Installation: Download the built debug APK to install directly on your tablet or phone.",
+                    text = "â€¢ Download ZIP: In the Google AI Studio menu (top bar), click 'Export project as ZIP' to download the entire Android project.\nâ€¢ GitHub Sync: Export directly to your GitHub repository.\nâ€¢ APK Installation: Download the built debug APK to install directly on your tablet or phone.",
                     color = colors.textSecondary,
                     fontSize = 11.sp,
                     lineHeight = 16.sp
                 )
             }
         }
+
+        // --- 6. About ---
+        item {
+            FioCard(
+                backgroundColor = colors.surface,
+                borderColor = colors.border,
+                padding = PaddingValues(16.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(imageVector = Icons.Default.Info, contentDescription = null, tint = colors.primary, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("About Fio", color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "\u201cI was bored, so I made my private study app.\u201d",
+                    color = colors.textSecondary,
+                    fontSize = 12.sp,
+                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+                AboutRow(label = "Developer", value = "Mike Edeimu")
+                AboutRow(
+                    label = "GitHub",
+                    value = "@emf187",
+                    onClick = {
+                        runCatching {
+                            context.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/emf187"))
+                            )
+                        }
+                    }
+                )
+                AboutRow(label = "Version", value = BuildConfig.VERSION_NAME)
+
+                Spacer(modifier = Modifier.height(10.dp))
+                FioDivider()
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Wingman chatbot history stats + clear action
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Wingman Chatbot History",
+                            color = colors.textPrimary,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = if (chatHistory.isEmpty()) {
+                                "No chatbot messages stored yet."
+                            } else {
+                                "${chatHistory.size} message(s) stored on this device only"
+                            },
+                            color = colors.textMuted,
+                            fontSize = 11.sp
+                        )
+                    }
+                    if (chatHistory.isNotEmpty()) {
+                        TextButton(
+                            onClick = {
+                                repository.clearChatHistory()
+                                Toast.makeText(context, "Chatbot history cleared", Toast.LENGTH_SHORT).show()
+                            }
+                        ) {
+                            Text("Clear History", color = colors.error, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AboutRow(
+    label: String,
+    value: String,
+    onClick: (() -> Unit)? = null
+) {
+    val colors = LocalFioColors.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
+            .padding(vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            color = colors.textMuted,
+            fontSize = 12.sp,
+            modifier = Modifier.width(84.dp)
+        )
+        Text(
+            text = value,
+            color = if (onClick != null) colors.primary else colors.textPrimary,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold
+        )
     }
 }

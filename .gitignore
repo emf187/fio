@@ -16,3 +16,17 @@
 local.properties
 .env
 debug.keystore
+
+# Build outputs
+build/
+**/build/
+*.apk
+*.aab
+
+# Local/reference projects
+Areada-main/
+Fio.apk
+
+# Keys (debug keystore is generated locally)
+*.jks
+my-upload-key.jks

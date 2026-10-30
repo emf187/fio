@@ -1,4 +1,4 @@
-package com.example.fio.ui.screens
+﻿package com.example.fio.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -66,7 +66,7 @@ fun HealthTrackingScreen(repository: FioRepository) {
                             val isSelected = manualSleepType == type
                             Box(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
+                                    .clip(RoundedCornerShape(12.dp))
                                     .background(if (isSelected) colors.primaryContainer else colors.surfaceElevated)
                                     .clickable { manualSleepType = type }
                                     .padding(horizontal = 12.dp, vertical = 6.dp)
@@ -111,7 +111,7 @@ fun HealthTrackingScreen(repository: FioRepository) {
                         showManualSleepDialog = false
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
-                    shape = RoundedCornerShape(6.dp)
+                    shape = RoundedCornerShape(12.dp)
                 ) {
                     Text("Save Sleep Log", color = Color.White)
                 }
@@ -227,7 +227,7 @@ fun HealthTrackingScreen(repository: FioRepository) {
                         colors = ButtonDefaults.buttonColors(
                             containerColor = if (isSleeping) colors.warning else colors.primary
                         ),
-                        shape = RoundedCornerShape(8.dp),
+                        shape = RoundedCornerShape(14.dp),
                         modifier = Modifier.weight(1f).testTag("sleep_shortcut_button")
                     ) {
                         Icon(
@@ -273,7 +273,7 @@ fun HealthTrackingScreen(repository: FioRepository) {
                                 )
                             }
                             Text(
-                                text = "${formatTimeOnly(s.startTimeMillis)} - ${formatTimeOnly(s.endTimeMillis)} • Logged: ${formatTimestamp(s.loggedAtMillis)}",
+                                text = "${formatTimeOnly(s.startTimeMillis)} - ${formatTimeOnly(s.endTimeMillis)} â€¢ Logged: ${formatTimestamp(s.loggedAtMillis)}",
                                 color = colors.textMuted,
                                 fontSize = 9.sp
                             )
@@ -310,7 +310,7 @@ fun HealthTrackingScreen(repository: FioRepository) {
                 Button(
                     onClick = { repository.logMeal("Meal") },
                     colors = ButtonDefaults.buttonColors(containerColor = colors.warning),
-                    shape = RoundedCornerShape(8.dp),
+                    shape = RoundedCornerShape(14.dp),
                     modifier = Modifier.fillMaxWidth().testTag("i_ate_button")
                 ) {
                     Icon(imageVector = Icons.Default.Add, contentDescription = null, tint = Color.Black)
@@ -324,9 +324,9 @@ fun HealthTrackingScreen(repository: FioRepository) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(6.dp))
+                            .clip(RoundedCornerShape(12.dp))
                             .background(colors.surfaceElevated)
-                            .border(1.dp, colors.warning.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
+                            .border(1.dp, colors.warning.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
                             .padding(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -360,7 +360,7 @@ fun HealthTrackingScreen(repository: FioRepository) {
                             Text(text = "Eaten at: ${formatTimeOnly(meal.timestampMillis)}", color = colors.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                             Text(
                                 text = "Recorded: ${formatTimestamp(meal.loggedAtMillis)}" +
-                                        if (meal.editedAtMillis != null) " • Edited: ${formatTimestamp(meal.editedAtMillis)}" else "",
+                                        if (meal.editedAtMillis != null) " â€¢ Edited: ${formatTimestamp(meal.editedAtMillis)}" else "",
                                 color = colors.textMuted,
                                 fontSize = 9.sp
                             )
@@ -407,7 +407,7 @@ fun HealthTrackingScreen(repository: FioRepository) {
                                 )
                             )
                         },
-                        shape = RoundedCornerShape(6.dp),
+                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.weight(1f)
                     ) {
                         Text("+ Gym Session", fontSize = 11.sp, color = colors.warning)
@@ -426,7 +426,7 @@ fun HealthTrackingScreen(repository: FioRepository) {
                                 )
                             )
                         },
-                        shape = RoundedCornerShape(6.dp),
+                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.weight(1f)
                     ) {
                         Text("+ Rest Block", fontSize = 11.sp, color = colors.info)

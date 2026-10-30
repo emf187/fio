@@ -102,9 +102,9 @@ fun TutorScreen(
                     val isSelected = c.id == selectedCourseId
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
+                            .clip(RoundedCornerShape(12.dp))
                             .background(if (isSelected) colors.primaryContainer else colors.surface)
-                            .border(1.dp, if (isSelected) colors.primary else colors.border, RoundedCornerShape(6.dp))
+                            .border(1.dp, if (isSelected) colors.primary else colors.border, RoundedCornerShape(12.dp))
                             .clickable { selectedCourseId = c.id }
                             .padding(horizontal = 10.dp, vertical = 6.dp)
                     ) {
@@ -183,7 +183,7 @@ fun TutorScreen(
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
+                            .clip(RoundedCornerShape(10.dp))
                             .background(colors.surfaceElevated)
                             .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
@@ -223,7 +223,7 @@ fun TutorScreen(
                                 PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                             )
                         },
-                        shape = RoundedCornerShape(6.dp),
+                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.testTag("upload_past_question_photo")
                     ) {
                         Icon(imageVector = Icons.Default.AddPhotoAlternate, contentDescription = null, tint = colors.textSecondary, modifier = Modifier.size(16.dp))
@@ -298,7 +298,7 @@ Evaluate this answer. Return ONLY a valid JSON object without markdown fences, w
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
-                        shape = RoundedCornerShape(6.dp),
+                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.testTag("submit_answer_button")
                     ) {
                         if (isGrading) {
@@ -366,7 +366,7 @@ Evaluate this answer. Return ONLY a valid JSON object without markdown fences, w
                                 )
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
-                            shape = RoundedCornerShape(6.dp),
+                            shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.fillMaxWidth().testTag("schedule_revision_button")
                         ) {
                             Icon(imageVector = Icons.Default.Event, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))

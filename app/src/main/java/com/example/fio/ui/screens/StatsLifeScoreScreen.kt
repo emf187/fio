@@ -105,7 +105,7 @@ fun StatsLifeScoreScreen(
 
                 Row(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
+                        .clip(RoundedCornerShape(12.dp))
                         .background(colors.surfaceElevated)
                         .padding(2.dp),
                     horizontalArrangement = Arrangement.spacedBy(2.dp)
@@ -114,7 +114,7 @@ fun StatsLifeScoreScreen(
                         val isSelected = selectedPeriod == period
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
+                                .clip(RoundedCornerShape(10.dp))
                                 .background(if (isSelected) colors.primaryContainer else Color.Transparent)
                                 .clickable { selectedPeriod = period }
                                 .padding(horizontal = 8.dp, vertical = 4.dp)
@@ -328,7 +328,7 @@ Give me a concise 3-point review with practical suggestions, and suggest 1 speci
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
-                    shape = RoundedCornerShape(6.dp),
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth().testTag("ai_weekly_review_button")
                 ) {
                     if (isReviewLoading) {

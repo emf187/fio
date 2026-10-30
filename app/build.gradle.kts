@@ -54,6 +54,14 @@ android {
       // AI Studio.
       signingConfig = signingConfigs.getByName("debugConfig")
     }
+    // Release-speed build signed with the same debug keystore, so it installs right over the
+    // debug APK but runs without any debug overhead (noticeably smoother on low-end phones).
+    create("fast") {
+      initWith(getByName("release"))
+      isMinifyEnabled = false
+      signingConfig = signingConfigs.getByName("debugConfig")
+      matchingFallbacks += listOf("release")
+    }
   }
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_11
@@ -124,6 +132,7 @@ dependencies {
   implementation(libs.logging.interceptor)
   implementation(libs.moshi.kotlin)
   implementation(libs.okhttp)
+  implementation("org.jsoup:jsoup:1.22.2")
   // implementation(libs.play.services.location)
   implementation(libs.retrofit)
   testImplementation(libs.androidx.compose.ui.test.junit4)

@@ -134,6 +134,21 @@ data class StudyDocument(
     val lastAccessedMillis: Long = currentTimestamp()
 )
 
+/**
+ * Builds the small AI-context chunks for a document from its full text.
+ * Kept derived (instead of persisted) so storage stays lean and loading stays fast.
+ */
+fun deriveDocumentChunks(title: String, content: String, chunkSize: Int = 600): List<DocumentChunk> {
+    if (content.isBlank()) return emptyList()
+    return content.chunked(chunkSize).mapIndexed { idx, chk ->
+        DocumentChunk(
+            id = "chunk_${idx + 1}",
+            title = "$title - Part ${idx + 1}",
+            text = chk
+        )
+    }
+}
+
 data class Flashcard(
     val id: String = java.util.UUID.randomUUID().toString(),
     val courseId: String,
@@ -177,6 +192,15 @@ data class NoteItem(
     val updatedAtMillis: Long = currentTimestamp()
 )
 
+/** A stored picture in the Gallery (file lives in filesDir/fio_gallery/<fileName>). */
+data class GalleryImage(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val fileName: String,
+    val displayName: String = "",
+    val mimeType: String = "image/*",
+    val addedAtMillis: Long = currentTimestamp()
+)
+
 enum class SessionStatus {
     COMPLETED,
     BROKEN,
@@ -217,6 +241,7 @@ data class AppSettings(
     val aiApiKey: String = "",
     val aiModelName: String = "google/gemini-2.0-flash-001",
     val theme: String = "OBSIDIAN_PURPLE", // OBSIDIAN_PURPLE, OLED_BLACK, HIGH_CONTRAST, OBSIDIAN_LIGHT
+    val accentColor: String = "PURPLE", // PURPLE, BLUE, TEAL, GREEN, AMBER, ROSE, ORANGE
     val fontScale: Float = 1.0f,
     val reduceMotion: Boolean = false,
     val gracePeriodSeconds: Int = 15,
