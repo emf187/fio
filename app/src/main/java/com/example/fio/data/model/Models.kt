@@ -236,12 +236,12 @@ data class CategoryWeights(
 )
 
 data class AppSettings(
-    val aiProvider: String = "OpenRouter",
-    val aiBaseUrl: String = "https://openrouter.ai/api/v1",
+    val aiProvider: String = "Google Gemini", // Google Gemini (default), OpenRouter, Custom
+    val aiBaseUrl: String = "https://generativelanguage.googleapis.com/v1beta/openai",
     val aiApiKey: String = "",
-    val aiModelName: String = "google/gemini-2.0-flash-001",
-    val theme: String = "OBSIDIAN_PURPLE", // OBSIDIAN_PURPLE, OLED_BLACK, HIGH_CONTRAST, OBSIDIAN_LIGHT
-    val accentColor: String = "PURPLE", // PURPLE, BLUE, TEAL, GREEN, AMBER, ROSE, ORANGE
+    val aiModelName: String = "gemini-3.8-flash",
+    val theme: String = "OBSIDIAN_LIGHT", // OBSIDIAN_LIGHT (default), OBSIDIAN_PURPLE, OLED_BLACK, HIGH_CONTRAST
+    val accentColor: String = "BLUE", // BLUE (default), PURPLE, TEAL, GREEN, AMBER, ROSE, ORANGE
     val fontScale: Float = 1.0f,
     val reduceMotion: Boolean = false,
     val gracePeriodSeconds: Int = 15,

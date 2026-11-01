@@ -214,6 +214,17 @@ object EpubEngine {
               font-size: ${fontSize}px !important;
               line-height: $lineSpacing !important;
             }
+            /* Book styles often paint their own white "sheet"; the palette decides
+               the page colour — flatten those so the night/paper themes never flash. */
+            body, body div, body section, body article, body main, body nav,
+            body header, body footer, body ul, body ol, body li, body dl, body dt, body dd,
+            body table, body tbody, body thead, body tr, body td, body th, body tfoot,
+            body figure, body figcaption, body p, body span, body font,
+            body h1, body h2, body h3, body h4, body h5, body h6,
+            body em, body strong, body i, body b, body u, body s, body cite {
+              background: transparent !important;
+              background-color: transparent !important;
+            }
             body {
               padding: 76px max(18px, 5vw) 132px;
               word-break: break-word;

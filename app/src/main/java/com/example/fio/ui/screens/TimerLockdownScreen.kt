@@ -361,15 +361,20 @@ fun TimerLockdownScreen(repository: FioRepository) {
                                     }
                                 },
                                 enabled = !emergencyPauseUsed || isEmergencyPaused,
-                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = colors.textPrimary,
+                                    containerColor = colors.surfaceElevated
+                                ),
+                                border = null,
+                                shape = RoundedCornerShape(10.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Icon(imageVector = Icons.Default.Pause, contentDescription = null, tint = colors.warning, modifier = Modifier.size(16.dp))
+                                Icon(imageVector = Icons.Default.Pause, contentDescription = null, tint = colors.textSecondary, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
                                     if (isEmergencyPaused) "Resume" else if (emergencyPauseUsed) "Pause Used" else "1x Pause",
                                     fontSize = 11.sp,
-                                    color = if (emergencyPauseUsed && !isEmergencyPaused) colors.textMuted else colors.warning
+                                    color = if (emergencyPauseUsed && !isEmergencyPaused) colors.textMuted else colors.textPrimary
                                 )
                             }
 
@@ -403,7 +408,12 @@ fun TimerLockdownScreen(repository: FioRepository) {
                             strikesUsedCount = 0
                             breaksTakenCount = 0
                         },
-                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = colors.textPrimary,
+                            containerColor = colors.surfaceElevated
+                        ),
+                        border = null,
+                        shape = RoundedCornerShape(10.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(

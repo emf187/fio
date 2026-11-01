@@ -12,18 +12,18 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
-// Obsidian-style palette
-val ObsidianBg = Color(0xFF111113)
-val ObsidianSurface = Color(0xFF18181C)
-val ObsidianSurfaceElevated = Color(0xFF222228)
-val ObsidianBorder = Color(0xFF2C2C36)
+// Dark neutral (Notion-like dark: warm charcoal, hairline borders)
+val ObsidianBg = Color(0xFF191919)
+val ObsidianSurface = Color(0xFF202020)
+val ObsidianSurfaceElevated = Color(0xFF252525)
+val ObsidianBorder = Color(0xFF2E2E31)
 val ObsidianPurple = Color(0xFF9D7CFF)
 val ObsidianPurpleDeep = Color(0xFF7C3AED)
-val ObsidianPurpleContainer = Color(0xFF291E3E)
+val ObsidianPurpleContainer = Color(0xFF26262B)
 val ObsidianOnPurple = Color(0xFFE2D9FC)
-val ObsidianTextPrimary = Color(0xFFEDEDED)
-val ObsidianTextSecondary = Color(0xFF9E9EAE)
-val ObsidianTextMuted = Color(0xFF666675)
+val ObsidianTextPrimary = Color(0xFFE6E6E3)
+val ObsidianTextSecondary = Color(0xFFA3A29F)
+val ObsidianTextMuted = Color(0xFF716F6C)
 
 val ObsidianGreen = Color(0xFF4ADE80)
 val ObsidianYellow = Color(0xFFFBBF24)
@@ -32,9 +32,9 @@ val ObsidianBlue = Color(0xFF60A5FA)
 
 // OLED Black
 val OledBg = Color(0xFF000000)
-val OledSurface = Color(0xFF08080A)
-val OledSurfaceElevated = Color(0xFF121216)
-val OledBorder = Color(0xFF202026)
+val OledSurface = Color(0xFF0C0C0C)
+val OledSurfaceElevated = Color(0xFF161616)
+val OledBorder = Color(0xFF242426)
 
 // High Contrast
 val HighContrastBg = Color(0xFF000000)
@@ -42,14 +42,14 @@ val HighContrastSurface = Color(0xFF0A0A0E)
 val HighContrastBorder = Color(0xFF4B4B5A)
 val HighContrastText = Color(0xFFFFFFFF)
 
-// Obsidian Light
-val LightBg = Color(0xFFF7F7FA)
-val LightSurface = Color(0xFFFFFFFF)
-val LightSurfaceElevated = Color(0xFFEFEFF4)
-val LightBorder = Color(0xFFDCDCE5)
+// Light neutral (Notion-like light: white page, soft gray blocks)
+val LightBg = Color(0xFFFFFFFF)
+val LightSurface = Color(0xFFF7F7F5)
+val LightSurfaceElevated = Color(0xFFEDEDEB)
+val LightBorder = Color(0xFFE7E7E4)
 val LightPrimary = Color(0xFF6D28D9)
-val LightTextPrimary = Color(0xFF18181B)
-val LightTextSecondary = Color(0xFF52525B)
+val LightTextPrimary = Color(0xFF34322E)
+val LightTextSecondary = Color(0xFF6F6E6A)
 
 data class FioCustomColors(
     val background: Color,
@@ -177,7 +177,7 @@ fun FioTheme(
             background = themedColors.background,
             surface = themedColors.surface,
             primary = themedColors.primary,
-            onPrimary = Color(0xFF120C24),
+            onPrimary = Color(0xFF191919),
             onBackground = themedColors.textPrimary,
             onSurface = themedColors.textPrimary
         )
@@ -195,24 +195,24 @@ fun FioTheme(
     }
 }
 
-/** Soft, generously rounded geometry so the app feels hand-crafted, not boxy. */
+/** Notion-style geometry: crisp but never boxy — soft corners, layered by whitespace. */
 val FioShapes = Shapes(
-    extraSmall = RoundedCornerShape(10.dp),
-    small = RoundedCornerShape(12.dp),
-    medium = RoundedCornerShape(16.dp),
-    large = RoundedCornerShape(22.dp),
-    extraLarge = RoundedCornerShape(28.dp)
+    extraSmall = RoundedCornerShape(8.dp),
+    small = RoundedCornerShape(10.dp),
+    medium = RoundedCornerShape(12.dp),
+    large = RoundedCornerShape(18.dp),
+    extraLarge = RoundedCornerShape(24.dp)
 )
 
 /** Accent choices: returns (primary, primaryContainer) for the current theme. */
 fun accentPalette(name: String, light: Boolean): Pair<Color, Color> = when (name) {
-    "BLUE" -> if (light) Color(0xFF2563EB) to Color(0xFFDBEAFE) else Color(0xFF60A5FA) to Color(0xFF16263D)
-    "TEAL" -> if (light) Color(0xFF0D9488) to Color(0xFFCCFBF1) else Color(0xFF2DD4BF) to Color(0xFF0E2B28)
-    "GREEN" -> if (light) Color(0xFF16A34A) to Color(0xFFDCFCE7) else Color(0xFF4ADE80) to Color(0xFF122E1D)
-    "AMBER" -> if (light) Color(0xFFD97706) to Color(0xFFFEF3C7) else Color(0xFFFBBF24) to Color(0xFF322609)
-    "ROSE" -> if (light) Color(0xFFE11D48) to Color(0xFFFFE4E6) else Color(0xFFFB7185) to Color(0xFF341219)
-    "ORANGE" -> if (light) Color(0xFFEA580C) to Color(0xFFFFEDD5) else Color(0xFFFB923C) to Color(0xFF331B0B)
-    else -> if (light) Color(0xFF6D28D9) to Color(0xFFEDE9FE) else Color(0xFF9D7CFF) to Color(0xFF291E3E)
+    "BLUE" -> if (light) Color(0xFF2563EB) to Color(0xFFE3EFFC) else Color(0xFF71A8F5) to Color(0xFF1B2530)
+    "TEAL" -> if (light) Color(0xFF0D9488) to Color(0xFFDFF5F2) else Color(0xFF3FC2B6) to Color(0xFF142826)
+    "GREEN" -> if (light) Color(0xFF16A34A) to Color(0xFFE4F6EA) else Color(0xFF54C980) to Color(0xFF17251B)
+    "AMBER" -> if (light) Color(0xFFD97706) to Color(0xFFFAF1DE) else Color(0xFFE7BC4E) to Color(0xFF282316)
+    "ROSE" -> if (light) Color(0xFFE11D48) to Color(0xFFFAE9ED) else Color(0xFFEA7F95) to Color(0xFF2A1A1E)
+    "ORANGE" -> if (light) Color(0xFFEA580C) to Color(0xFFFAEDE2) else Color(0xFFEF9755) to Color(0xFF28201A)
+    else -> if (light) Color(0xFF6D28D9) to Color(0xFFEEE9F8) else Color(0xFF9D7CFF) to Color(0xFF25232D)
 }
 
 /** Preview colours for the accent picker in Settings. */

@@ -97,6 +97,14 @@ object Fb2Engine {
                         font-size: ${fontSize}px !important;
                         line-height: $lineSpacing !important;
                     }
+                    /* FB2 covers sometimes carry their own background colours — keep the palette in charge. */
+                    body, body div, body section, body ul, body ol, body li,
+                    body table, body td, body th, body tr, body p, body span,
+                    body h1, body h2, body h3, body h4, body h5, body h6,
+                    body em, body strong, body i, body b, body cite, body title {
+                        background: transparent !important;
+                        background-color: transparent !important;
+                    }
                     body {
                         padding: 76px max(18px, 5vw) 132px;
                         word-break: break-word;

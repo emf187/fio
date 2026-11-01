@@ -202,7 +202,7 @@ fun NotesScreen(repository: FioRepository) {
                         editingNote = updated
                         queueNoteSave(updated)
                     },
-                    placeholder = { Text("Write in Obsidian Markdown...\nUse [[links]] to connect notes\nUse #tags to organize\nUse **bold** and # headers", color = colors.textMuted) },
+                    placeholder = { Text("Write in Markdown...\nUse [[links]] to connect notes\nUse #tags to organize\nUse **bold** and # headers", color = colors.textMuted) },
                     modifier = Modifier.fillMaxSize().testTag("note_content_editor"),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = Color.Transparent,

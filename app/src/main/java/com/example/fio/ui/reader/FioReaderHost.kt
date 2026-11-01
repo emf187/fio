@@ -23,6 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -32,9 +33,11 @@ import app.areada.data.reader.DocumentType
 import app.areada.data.reader.ReaderDocument
 import app.areada.data.reader.ReaderPreferences
 import app.areada.data.reader.ReaderStateStore
+import app.areada.data.reader.ReaderThemeMode
 import app.areada.data.reader.ReadingBookmark
 import app.areada.data.reader.ReadingBookmarkActions
 import app.areada.data.reader.ReadingProgress
+import app.areada.data.reader.renderPalette
 import app.areada.reader.epub.EpubBook
 import app.areada.reader.epub.EpubEngine
 import app.areada.reader.fb2.Fb2Book
@@ -256,7 +259,20 @@ fun FioReaderHost(
         }
 
         is HostState.Ready -> {
-            ReaderTheme(mode = current.preferences.themeMode) {
+            // Resolve "Follow system" once so the chrome, the WebView palette and the
+            // window background all agree: ANDROID can otherwise pick dark chrome vs
+            // light page colours and make the reader appear to flash between themes.
+            val systemDark = androidx.compose.foundation.isSystemInDarkTheme()
+            val resolvedMode =
+                if (current.preferences.themeMode == ReaderThemeMode.ANDROID) {
+                    if (systemDark) ReaderThemeMode.DARK else ReaderThemeMode.LIGHT
+                } else {
+                    current.preferences.themeMode
+                }
+            val palette = resolvedMode.renderPalette()
+            val paletteColor = Color(parseColorSafe(palette.backgroundHex))
+            Box(modifier = Modifier.fillMaxSize().background(paletteColor)) {
+                ReaderTheme(mode = resolvedMode) {
                 when {
                     current.epubBook != null -> EpubReaderScreen(
                         screen = ReaderScreen.Epub(
@@ -499,9 +515,10 @@ fun FioReaderHost(
                     )
                 }
             }
+                }
+            }
         }
     }
-}
 
 /** Small helper so each screen's bookmark callback can reuse one toggle path. */
 private class ReaderSideEffect(private val create: (List<ReadingBookmark>) -> ReadingBookmark) {
@@ -566,3 +583,7 @@ private fun originalDisplayName(context: Context, document: StudyDocument, file:
         "FB2" -> "${document.title}.fb2"
         else -> file.name
     }
+
+/** Android's parse throws on malformed hex; fall back to a dark neutral. */
+private fun parseColorSafe(hex: String): Int =
+    runCatching { android.graphics.Color.parseColor(hex) }.getOrDefault(0xFF191919.toInt())

@@ -10,8 +10,15 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -40,6 +47,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DriveFileRenameOutline
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -47,12 +55,15 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -61,14 +72,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -97,6 +112,9 @@ fun GalleryScreen(repository: FioRepository) {
     var isImporting by remember { mutableStateOf(false) }
     var viewerIndex by remember { mutableStateOf<Int?>(null) }
     var pendingDelete by remember { mutableStateOf<GalleryImage?>(null) }
+    var actionTarget by remember { mutableStateOf<GalleryImage?>(null) }
+    var renameTarget by remember { mutableStateOf<GalleryImage?>(null) }
+    var renameInput by remember { mutableStateOf("") }
 
     val picker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia(25)
@@ -211,7 +229,7 @@ fun GalleryScreen(repository: FioRepository) {
                     GalleryThumb(
                         file = repository.galleryFile(image),
                         onClick = { viewerIndex = images.indexOf(image).coerceAtLeast(0) },
-                        onLongClick = { pendingDelete = image }
+                        onLongClick = { actionTarget = image }
                     )
                 }
             }
@@ -225,7 +243,86 @@ fun GalleryScreen(repository: FioRepository) {
             repository = repository,
             startIndex = startIndex.coerceIn(0, (images.size - 1).coerceAtLeast(0)),
             onClose = { viewerIndex = null },
-            onDeleteRequest = { image -> pendingDelete = image }
+            onDeleteRequest = { image -> pendingDelete = image },
+            onRenameRequest = { image ->
+                renameTarget = image
+                renameInput = image.displayName
+            }
+        )
+    }
+
+    // Long-press options for a photo: name it or remove it
+    actionTarget?.let { image ->
+        AlertDialog(
+            onDismissRequest = { actionTarget = null },
+            containerColor = colors.surface,
+            title = { Text("Photo options", color = colors.textPrimary) },
+            text = {
+                Text(
+                    text = "Give this photo a name, or remove it from the gallery.",
+                    color = colors.textSecondary
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    actionTarget = null
+                    renameTarget = image
+                    renameInput = image.displayName
+                }) {
+                    Icon(
+                        imageVector = Icons.Default.DriveFileRenameOutline,
+                        contentDescription = null,
+                        tint = colors.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Name this photo", color = colors.primary, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    actionTarget = null
+                    pendingDelete = image
+                }) {
+                    Text("Remove", color = colors.error, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        )
+    }
+
+    // Rename dialog
+    renameTarget?.let { image ->
+        AlertDialog(
+            onDismissRequest = { renameTarget = null },
+            containerColor = colors.surface,
+            title = { Text("Name this photo", color = colors.textPrimary) },
+            text = {
+                OutlinedTextField(
+                    value = renameInput,
+                    onValueChange = { renameInput = it.take(60) },
+                    placeholder = { Text("Photo name", color = colors.textMuted) },
+                    singleLine = true,
+                    colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = colors.primary,
+                        unfocusedBorderColor = colors.border,
+                        focusedTextColor = colors.textPrimary,
+                        unfocusedTextColor = colors.textPrimary
+                    )
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    repository.renameGalleryImage(image.id, renameInput)
+                    renameTarget = null
+                }) {
+                    Text("Save", color = colors.primary, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { renameTarget = null }) {
+                    Text("Cancel", color = colors.textMuted)
+                }
+            }
         )
     }
 
@@ -308,10 +405,13 @@ private fun GalleryViewer(
     repository: FioRepository,
     startIndex: Int,
     onClose: () -> Unit,
-    onDeleteRequest: (GalleryImage) -> Unit
+    onDeleteRequest: (GalleryImage) -> Unit,
+    onRenameRequest: (GalleryImage) -> Unit
 ) {
-    val colors = LocalFioColors.current
     val pagerState = rememberPagerState(initialPage = startIndex) { images.size }
+    // Pages report their zoom state; page swiping pauses while the open page is zoomed.
+    val zoomedPages = remember { mutableStateMapOf<Int, Boolean>() }
+    var chromeVisible by remember { mutableStateOf(true) }
 
     Dialog(
         onDismissRequest = onClose,
@@ -325,76 +425,193 @@ private fun GalleryViewer(
                 .fillMaxSize()
                 .background(Color.Black)
         ) {
-            HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
-                val image = images.getOrNull(page)
-                if (image != null) {
-                    val bitmap by produceState<Bitmap?>(initialValue = null, image.fileName) {
-                        value = withContext(Dispatchers.IO) {
-                            decodeSampledBitmap(repository.galleryFile(image), 2048)
-                        }
-                    }
-                    val loaded = bitmap
-                    if (loaded != null) {
-                        Image(
-                            bitmap = loaded.asImageBitmap(),
-                            contentDescription = image.displayName,
-                            contentScale = ContentScale.Fit,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    } else {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = Color.White)
-                        }
-                    }
-                }
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+                userScrollEnabled = zoomedPages[pagerState.currentPage] != true
+            ) { page ->
+                val image = images.getOrNull(page) ?: return@HorizontalPager
+                ZoomableGalleryImage(
+                    file = repository.galleryFile(image),
+                    displayName = image.displayName.ifBlank { "Photo" },
+                    onZoomChanged = { zoomed -> zoomedPages[page] = zoomed },
+                    onToggleChrome = { chromeVisible = !chromeVisible }
+                )
             }
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.55f))
-                    .windowInsetsPadding(WindowInsets.statusBars)
-                    .padding(horizontal = 6.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
+            AnimatedVisibility(
+                visible = chromeVisible,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier.align(Alignment.TopCenter)
             ) {
-                IconButton(onClick = onClose) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Close",
-                        tint = Color.White
-                    )
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    val current = images.getOrNull(pagerState.currentPage)
-                    Text(
-                        text = current?.displayName?.ifBlank { "Photo" } ?: "",
-                        color = Color.White,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = current?.let {
-                            "${formatGalleryDate(it.addedAtMillis)}  \u00b7  ${pagerState.currentPage + 1} / ${images.size}"
-                        } ?: "",
-                        color = Color.White.copy(alpha = 0.7f),
-                        fontSize = 10.sp
-                    )
-                }
-                val current = images.getOrNull(pagerState.currentPage)
-                if (current != null) {
-                    IconButton(onClick = { onDeleteRequest(current) }) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.Black.copy(alpha = 0.55f))
+                        .windowInsetsPadding(WindowInsets.statusBars)
+                        .padding(horizontal = 6.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onClose) {
                         Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = "Delete photo",
-                            tint = colors.error
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close",
+                            tint = Color.White
                         )
+                    }
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .pointerInput(Unit) { detectTapGestures { } } // keep taps out of the pager
+                    ) {
+                        val current = images.getOrNull(pagerState.currentPage)
+                        Text(
+                            text = current?.displayName?.ifBlank { "Photo" } ?: "",
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = current?.let {
+                                "${formatGalleryDate(it.addedAtMillis)}  \u00b7  ${pagerState.currentPage + 1} / ${images.size}"
+                            } ?: "",
+                            color = Color.White.copy(alpha = 0.7f),
+                            fontSize = 10.sp
+                        )
+                    }
+                    val current = images.getOrNull(pagerState.currentPage)
+                    if (current != null) {
+                        IconButton(onClick = { onRenameRequest(current) }) {
+                            Icon(
+                                imageVector = Icons.Default.DriveFileRenameOutline,
+                                contentDescription = "Name this photo",
+                                tint = Color.White
+                            )
+                        }
+                        IconButton(onClick = { onDeleteRequest(current) }) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Delete photo",
+                                tint = Color(0xFFF87171)
+                            )
+                        }
                     }
                 }
             }
         }
     }
+}
+
+/**
+ * A full-screen gallery image with pinch-to-zoom, double-tap zoom and pan.
+ * Reports when the image is zoomed so page swiping can pause.
+ */
+@Composable
+private fun ZoomableGalleryImage(
+    file: File,
+    displayName: String,
+    onZoomChanged: (Boolean) -> Unit,
+    onToggleChrome: () -> Unit
+) {
+    val bitmap by produceState<Bitmap?>(initialValue = null, file.absolutePath) {
+        value = withContext(Dispatchers.IO) {
+            decodeSampledBitmap(file, 2400)
+        }
+    }
+    var containerSize by remember { mutableStateOf(IntSize.Zero) }
+    var scale by remember { mutableStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+    val isZoomed = scale > 1.01f
+    LaunchedEffect(isZoomed) { onZoomChanged(isZoomed) }
+
+    // Keeps the (scaled) image inside the viewport: never slides fully off-screen.
+    fun clampOffset(newOffset: Offset): Offset {
+        val bmp = bitmap ?: return Offset.Zero
+        val cw = containerSize.width.toFloat()
+        val ch = containerSize.height.toFloat()
+        if (cw <= 0f || ch <= 0f || bmp.width <= 0 || bmp.height <= 0) return Offset.Zero
+        val fit = minOf(cw / bmp.width, ch / bmp.height)
+        val drawnW = bmp.width * fit * scale
+        val drawnH = bmp.height * fit * scale
+        val maxX = maxOf(0f, (drawnW - cw) / 2f)
+        val maxY = maxOf(0f, (drawnH - ch) / 2f)
+        return Offset(newOffset.x.coerceIn(-maxX, maxX), newOffset.y.coerceIn(-maxY, maxY))
+    }
+
+    val loaded = bitmap
+    if (loaded == null) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(color = Color.White)
+        }
+        return
+    }
+
+    Image(
+        bitmap = loaded.asImageBitmap(),
+        contentDescription = displayName,
+        contentScale = ContentScale.Fit,
+        modifier = Modifier
+            .fillMaxSize()
+            .onSizeChanged { containerSize = it }
+            .graphicsLayer(
+                scaleX = scale,
+                scaleY = scale,
+                translationX = offset.x,
+                translationY = offset.y
+            )
+            .pointerInput(file.absolutePath) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    var pinchStarted = false
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val pressedCount = event.changes.count { it.pressed }
+                        if (pressedCount == 0) break
+                        if (pressedCount >= 2) {
+                            pinchStarted = true
+                            val zoomChange = event.calculateZoom()
+                            if (zoomChange != 1f) {
+                                scale = if (scale * zoomChange < 1.04f) 1f else (scale * zoomChange).coerceIn(1f, 8f)
+                                if (scale == 1f) offset = Offset.Zero
+                            }
+                            if (scale > 1f) {
+                                val pan = event.calculatePan() * scale
+                                offset = clampOffset(offset + pan)
+                            }
+                            event.changes.forEach { if (it.pressed) it.consume() }
+                        } else if (pinchStarted || scale > 1f) {
+                            if (scale > 1f) {
+                                val pan = event.calculatePan() * scale
+                                offset = clampOffset(offset + pan)
+                            }
+                            event.changes.forEach { if (it.pressed) it.consume() }
+                        }
+                    }
+                }
+            }
+            .pointerInput(file.absolutePath) {
+                detectTapGestures(
+                    onTap = { onToggleChrome() },
+                    onDoubleTap = { position ->
+                        if (scale > 1f) {
+                            scale = 1f
+                            offset = Offset.Zero
+                        } else {
+                            val newScale = 2.5f
+                            val centerX = containerSize.width / 2f
+                            val centerY = containerSize.height / 2f
+                            val dX = position.x - centerX
+                            val dY = position.y - centerY
+                            scale = newScale
+                            offset = clampOffset(Offset(-dX * (newScale - 1f), -dY * (newScale - 1f)))
+                        }
+                    }
+                )
+            }
+    )
 }
 
 private fun formatGalleryDate(millis: Long): String =

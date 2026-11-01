@@ -34,7 +34,7 @@ enum class FioScreen(val title: String, val icon: ImageVector) {
     STUDY("Study Companion", Icons.AutoMirrored.Filled.MenuBook),
     TUTOR("Tutor & Practice", Icons.Default.School),
     TIMER("Timer & Lockdown", Icons.Default.Timer),
-    NOTES("Notes & Graph", Icons.Default.EditNote),
+    NOTES("Notes & Links", Icons.Default.EditNote),
     GALLERY("Gallery", Icons.Default.Collections),
     HEALTH("Sleep & Meals", Icons.Default.Favorite),
     STATS("Stats & Life Score", Icons.Default.Analytics),
@@ -51,7 +51,7 @@ fun FioTopBar(
 ) {
     val colors = LocalFioColors.current
     Surface(
-        color = colors.surface,
+        color = colors.background,
         modifier = modifier
             .fillMaxWidth()
             .statusBarsPadding()
@@ -60,7 +60,7 @@ fun FioTopBar(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (showMenu) {
@@ -71,7 +71,7 @@ fun FioTopBar(
                         Icon(
                             imageVector = Icons.Default.Menu,
                             contentDescription = "Open Navigation Menu",
-                            tint = colors.textPrimary
+                            tint = colors.textSecondary
                         )
                     }
                 }
@@ -79,11 +79,12 @@ fun FioTopBar(
                 Text(
                     text = title,
                     color = colors.textPrimary,
-                    fontSize = 18.sp,
+                    fontSize = 20.sp,
                     fontWeight = FontWeight.SemiBold,
+                    letterSpacing = (-0.2).sp,
                     modifier = Modifier
                         .weight(1f)
-                        .padding(start = if (showMenu) 0.dp else 6.dp)
+                        .padding(start = if (showMenu) 2.dp else 6.dp)
                         .clickable(onClick = onOpenNav)
                 )
 
@@ -113,15 +114,16 @@ fun FioCard(
     backgroundColor: Color = LocalFioColors.current.surface,
     borderColor: Color = LocalFioColors.current.border,
     padding: PaddingValues = PaddingValues(16.dp),
-    cornerRadius: Dp = 20.dp,
+    cornerRadius: Dp = 12.dp,
     content: @Composable ColumnScope.() -> Unit
 ) {
     val shape = RoundedCornerShape(cornerRadius)
+    // Notion-style card: a quiet colored block, no outline. (borderColor kept for
+    // call-site compat; outlines made the card grid feel boxy.)
     Box(
         modifier = modifier
             .clip(shape)
             .background(backgroundColor)
-            .border(1.dp, borderColor.copy(alpha = 0.7f), shape)
             .padding(padding)
     ) {
         Column(content = content)
@@ -134,18 +136,19 @@ fun FioBadge(
     color: Color = LocalFioColors.current.primary,
     modifier: Modifier = Modifier
 ) {
+    // Notion tag style: small rectangular chip with tiny corner radius, not a pill.
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(50))
-            .background(color.copy(alpha = 0.14f))
-            .padding(horizontal = 9.dp, vertical = 3.dp)
+            .clip(RoundedCornerShape(4.dp))
+            .background(color.copy(alpha = 0.10f))
+            .padding(horizontal = 8.dp, vertical = 3.dp)
     ) {
         Text(
             text = text,
             color = color,
             fontSize = 10.sp,
-            fontWeight = FontWeight.SemiBold,
-            letterSpacing = 0.3.sp
+            fontWeight = FontWeight.Medium,
+            letterSpacing = 0.2.sp
         )
     }
 }
@@ -162,48 +165,41 @@ fun FioSidebarDrawer(
         color = colors.surface,
         modifier = Modifier
             .fillMaxHeight()
-            .width(280.dp)
+            .width(290.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(vertical = 16.dp, horizontal = 12.dp)
+                .padding(vertical = 20.dp, horizontal = 10.dp)
         ) {
             // Header with user profile (no logo — clean)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 12.dp)
+                    .padding(horizontal = 10.dp, vertical = 8.dp)
             ) {
                 Column {
                     Text(
                         text = if (profileName.isNotBlank()) profileName else "Fio",
                         color = colors.textPrimary,
-                        fontSize = 18.sp,
+                        fontSize = 17.sp,
                         fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.5.sp
+                        letterSpacing = (-0.1).sp
                     )
                     Text(
-                        text = if (profileName.isNotBlank()) "Personal Life Planner" else "effio â€¢ to realize & know",
+                        text = if (profileName.isNotBlank()) "Personal Life Planner" else "effio • to realize & know",
                         color = colors.textMuted,
                         fontSize = 11.sp
                     )
                 }
             }
 
-            FioDivider(modifier = Modifier.padding(vertical = 8.dp))
+            FioDivider(modifier = Modifier.padding(vertical = 10.dp))
 
             // Navigation Items
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "PLANNING & FOCUS",
-                    color = colors.textMuted,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.sp,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                )
+                SectionLabel("PLANNING & FOCUS")
 
                 NavItem(
                     screen = FioScreen.DASHBOARD,
@@ -215,40 +211,38 @@ fun FioSidebarDrawer(
                 NavItem(FioScreen.CALENDAR, currentScreen, onSelectScreen, onClose)
                 NavItem(FioScreen.TIMER, currentScreen, onSelectScreen, onClose)
 
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = "ACADEMICS & STUDY",
-                    color = colors.textMuted,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.sp,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                )
+                Spacer(modifier = Modifier.height(10.dp))
+                SectionLabel("ACADEMICS & STUDY")
 
                 NavItem(FioScreen.STUDY, currentScreen, onSelectScreen, onClose)
                 NavItem(FioScreen.TUTOR, currentScreen, onSelectScreen, onClose)
                 NavItem(FioScreen.NOTES, currentScreen, onSelectScreen, onClose)
                 NavItem(FioScreen.GALLERY, currentScreen, onSelectScreen, onClose)
 
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = "HEALTH & INSIGHTS",
-                    color = colors.textMuted,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.sp,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                )
+                Spacer(modifier = Modifier.height(10.dp))
+                SectionLabel("HEALTH & INSIGHTS")
 
                 NavItem(FioScreen.HEALTH, currentScreen, onSelectScreen, onClose)
                 NavItem(FioScreen.STATS, currentScreen, onSelectScreen, onClose)
             }
 
-            FioDivider(modifier = Modifier.padding(vertical = 8.dp))
+            FioDivider(modifier = Modifier.padding(vertical = 10.dp))
 
             NavItem(FioScreen.SETTINGS, currentScreen, onSelectScreen, onClose)
         }
     }
+}
+
+@Composable
+private fun SectionLabel(text: String) {
+    Text(
+        text = text,
+        color = LocalFioColors.current.textMuted,
+        fontSize = 9.5.sp,
+        fontWeight = FontWeight.SemiBold,
+        letterSpacing = 0.8.sp,
+        modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
+    )
 }
 
 @Composable
@@ -261,20 +255,20 @@ private fun NavItem(
 ) {
     val colors = LocalFioColors.current
     val isSelected = screen == currentScreen
-    val background = if (isSelected) colors.primaryContainer else Color.Transparent
-    val textColor = if (isSelected) colors.primary else colors.textPrimary
-    val iconColor = if (isSelected) colors.primary else colors.textSecondary
+    val background = if (isSelected) colors.textPrimary.copy(alpha = 0.07f) else Color.Transparent
+    val textColor = colors.textPrimary
+    val iconColor = if (isSelected) colors.primary else colors.textMuted
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(9.dp))
             .background(background)
             .clickable {
                 onSelectScreen(screen)
                 onClose()
             }
-            .padding(horizontal = 12.dp, vertical = 11.dp)
+            .padding(horizontal = 12.dp, vertical = 10.dp)
             .testTag("nav_item_${screen.name.lowercase()}"),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -282,9 +276,9 @@ private fun NavItem(
             imageVector = screen.icon,
             contentDescription = customLabel ?: screen.title,
             tint = iconColor,
-            modifier = Modifier.size(20.dp)
+            modifier = Modifier.size(19.dp)
         )
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(11.dp))
         Text(
             text = customLabel ?: screen.title,
             color = textColor,

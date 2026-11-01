@@ -107,13 +107,15 @@ class FioRepository(private val context: Context) {
             hydrateDocumentContents()
         }
         // Load settings
+        val geminiBase = "https://generativelanguage.googleapis.com/v1beta/openai"
+        val geminiModel = "gemini-3.8-flash"
         _settings.value = AppSettings(
-            aiProvider = prefs.getString("ai_provider", "OpenRouter") ?: "OpenRouter",
-            aiBaseUrl = prefs.getString("ai_base_url", "https://openrouter.ai/api/v1") ?: "https://openrouter.ai/api/v1",
+            aiProvider = prefs.getString("ai_provider", "Google Gemini") ?: "Google Gemini",
+            aiBaseUrl = prefs.getString("ai_base_url", geminiBase) ?: geminiBase,
             aiApiKey = prefs.getString("ai_api_key", "") ?: "",
-            aiModelName = prefs.getString("ai_model_name", "google/gemini-2.0-flash-001") ?: "google/gemini-2.0-flash-001",
-            theme = prefs.getString("app_theme", "OBSIDIAN_PURPLE") ?: "OBSIDIAN_PURPLE",
-            accentColor = prefs.getString("accent_color", "PURPLE") ?: "PURPLE",
+            aiModelName = prefs.getString("ai_model_name", geminiModel) ?: geminiModel,
+            theme = prefs.getString("app_theme", "OBSIDIAN_LIGHT") ?: "OBSIDIAN_LIGHT",
+            accentColor = prefs.getString("accent_color", "BLUE") ?: "BLUE",
             fontScale = prefs.getFloat("font_scale", 1.0f),
             reduceMotion = prefs.getBoolean("reduce_motion", false),
             gracePeriodSeconds = prefs.getInt("grace_period", 15),
@@ -122,6 +124,43 @@ class FioRepository(private val context: Context) {
             sleepTargetHours = prefs.getFloat("sleep_target", 8.0f).toDouble(),
             mealTargetCount = prefs.getInt("meal_target", 3)
         )
+
+        // One-time migration to the Notion-style look: users who never picked a
+        // theme themselves get the clean light palette (white page, gray blocks,
+        // blue accent). Anyone who already chose a theme/accent keeps theirs.
+        if (!prefs.getBoolean("theme_migrated_notion2", false)) {
+            val storedTheme = prefs.getString("app_theme", null)
+            val storedAccent = prefs.getString("accent_color", null)
+            if (storedTheme == null && storedAccent == null) {
+                prefs.edit()
+                    .putString("app_theme", "OBSIDIAN_LIGHT")
+                    .putString("accent_color", "BLUE")
+                    .apply()
+                _settings.value = _settings.value.copy(theme = "OBSIDIAN_LIGHT", accentColor = "BLUE")
+            }
+            prefs.edit().putBoolean("theme_migrated_notion2", true).apply()
+        }
+
+        // One-time migration to Google Gemini as the default AI provider:
+        // users who were still sitting on stock OpenRouter defaults with no key
+        // configured get pointed at Gemini (generous free tier, daily reset).
+        // Anyone who set up a real OpenRouter key keeps it untouched.
+        if (!prefs.getBoolean("provider_migrated_gemini", false)) {
+            val storedProvider = prefs.getString("ai_provider", null)
+            val hasKey = !prefs.getString("ai_api_key", "").isNullOrBlank()
+            if (!hasKey && (storedProvider == null || storedProvider == "OpenRouter")) {
+                prefs.edit()
+                    .putString("ai_provider", "Google Gemini")
+                    .putString("ai_base_url", geminiBase)
+                    .putString("ai_model_name", geminiModel)
+                    .apply()
+                _settings.value = _settings.value.copy(
+                    aiProvider = "Google Gemini", aiBaseUrl = geminiBase, aiModelName = geminiModel
+                )
+            }
+            prefs.edit().putBoolean("provider_migrated_gemini", true).apply()
+        }
+
         _galleryImages.value = loadGalleryImages()
     }
 
@@ -297,6 +336,16 @@ class FioRepository(private val context: Context) {
         _galleryImages.value = _galleryImages.value.filterNot { it.id == id }
         saveGalleryImages()
         ioExecutor.execute { runCatching { File(galleryDir, target.fileName).delete() } }
+    }
+
+    /** Gives a stored photo a custom name (shown in the grid & viewer). */
+    fun renameGalleryImage(id: String, name: String) {
+        val renamed = name.trim().take(60)
+        val updated = _galleryImages.value
+            .firstOrNull { it.id == id }
+            ?.copy(displayName = renamed) ?: return
+        _galleryImages.value = _galleryImages.value.map { if (it.id == id) updated else it }
+        saveGalleryImages()
     }
 
     private fun loadGalleryImages(): List<GalleryImage> {

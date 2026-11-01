@@ -244,25 +244,39 @@ internal fun EpubWebView(
                             velocityX: Float,
                             velocityY: Float,
                         ): Boolean {
-                            if (latestNavigationMode != ReaderNavigationMode.SWIPE) {
-                                return false
-                            }
                             val startEvent = downEvent ?: return false
                             val deltaX = upEvent.x - startEvent.x
                             val deltaY = upEvent.y - startEvent.y
                             val horizontal = abs(deltaX) > 90f &&
                                 abs(deltaX) > abs(deltaY) * 1.25f &&
                                 abs(velocityX) > 350f
-                            if (!horizontal) {
-                                return false
+                            if (horizontal) {
+                                if (latestNavigationMode != ReaderNavigationMode.SWIPE) {
+                                    return false
+                                }
+                                if (deltaX < 0f) {
+                                    latestOnSwipeNext()
+                                } else {
+                                    latestOnSwipePrevious()
+                                }
+                                return true
                             }
 
-                            if (deltaX < 0f) {
-                                latestOnSwipeNext()
-                            } else {
-                                latestOnSwipePrevious()
+                            // Scroll mode: riding a vertical fling past the start/end of a
+                            // section continues into the adjacent section, so reading flows
+                            // like a continuous document.
+                            if (latestNavigationMode == ReaderNavigationMode.SCROLL && abs(velocityY) > 700f) {
+                                val view = this@apply
+                                if (velocityY < 0f && !view.canScrollVertically(1)) {
+                                    latestOnSwipeNext()
+                                    return true
+                                }
+                                if (velocityY > 0f && !view.canScrollVertically(-1)) {
+                                    latestOnSwipePrevious()
+                                    return true
+                                }
                             }
-                            return true
+                            return false
                         }
                     },
                 )

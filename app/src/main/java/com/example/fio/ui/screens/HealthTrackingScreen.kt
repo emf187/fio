@@ -407,10 +407,15 @@ fun HealthTrackingScreen(repository: FioRepository) {
                                 )
                             )
                         },
-                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = colors.textPrimary,
+                            containerColor = colors.surfaceElevated
+                        ),
+                        border = null,
+                        shape = RoundedCornerShape(10.dp),
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text("+ Gym Session", fontSize = 11.sp, color = colors.warning)
+                        Text("+ Gym Session", fontSize = 11.sp, color = colors.textPrimary)
                     }
 
                     OutlinedButton(
@@ -426,10 +431,15 @@ fun HealthTrackingScreen(repository: FioRepository) {
                                 )
                             )
                         },
-                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = colors.textPrimary,
+                            containerColor = colors.surfaceElevated
+                        ),
+                        border = null,
+                        shape = RoundedCornerShape(10.dp),
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text("+ Rest Block", fontSize = 11.sp, color = colors.info)
+                        Text("+ Rest Block", fontSize = 11.sp, color = colors.textPrimary)
                     }
                 }
             }

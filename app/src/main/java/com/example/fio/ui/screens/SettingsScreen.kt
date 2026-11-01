@@ -46,6 +46,7 @@ fun SettingsScreen(repository: FioRepository) {
 
     // Local mutable state
     var profileNameInput by remember(profileName) { mutableStateOf(profileName) }
+    var providerChoice by remember { mutableStateOf(settings.aiProvider) }
     var apiKeyInput by remember { mutableStateOf(settings.aiApiKey) }
     var baseUrlInput by remember { mutableStateOf(settings.aiBaseUrl) }
     var modelNameInput by remember { mutableStateOf(settings.aiModelName) }
@@ -228,7 +229,7 @@ fun SettingsScreen(repository: FioRepository) {
             }
         }
 
-        // --- 2. AI Integration (OpenRouter & OpenAI-compatible) ---
+        // --- 2. AI Integration (Google Gemini default & OpenAI-compatible providers) ---
         item {
             FioCard(
                 backgroundColor = colors.surface,
@@ -242,12 +243,59 @@ fun SettingsScreen(repository: FioRepository) {
                 }
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Provider-agnostic. Keys are stored locally on device only. Default is OpenRouter.",
+                    text = "Keys are stored locally on device only. Default is Google Gemini (free tier resets daily).",
                     color = colors.textMuted,
                     fontSize = 11.sp
                 )
                 Spacer(modifier = Modifier.height(10.dp))
 
+                // Provider picker: tap sets provider and fills the matching defaults.
+                val providers = listOf(
+                    "Google Gemini" to "https://generativelanguage.googleapis.com/v1beta/openai",
+                    "OpenRouter" to "https://openrouter.ai/api/v1",
+                    "Custom" to ""
+                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.fillMaxWidth().testTag("provider_picker")
+                ) {
+                    providers.forEach { (name, _) ->
+                        val isSelected = providerChoice == name
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (isSelected) colors.primary else colors.surfaceElevated)
+                                .border(1.dp, if (isSelected) colors.primary else colors.border, RoundedCornerShape(10.dp))
+                                .clickable {
+                                    providerChoice = name
+                                    if (name == "Google Gemini") {
+                                        baseUrlInput = "https://generativelanguage.googleapis.com/v1beta/openai"
+                                        if (modelNameInput.isBlank() || modelNameInput.contains("/")) {
+                                            modelNameInput = "gemini-3.8-flash"
+                                        }
+                                    } else if (name == "OpenRouter") {
+                                        baseUrlInput = "https://openrouter.ai/api/v1"
+                                        if (modelNameInput.isBlank() || !modelNameInput.contains("/")) {
+                                            modelNameInput = "google/gemini-2.0-flash-001"
+                                        }
+                                    }
+                                }
+                                .weight(1f)
+                                .padding(horizontal = 8.dp, vertical = 9.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = if (name == "Google Gemini") "Gemini" else if (name == "OpenRouter") "OpenRouter" else "Custom",
+                                color = if (isSelected) Color.White else colors.textPrimary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
                 OutlinedTextField(
                     value = apiKeyInput,
                     onValueChange = { apiKeyInput = it },
@@ -261,6 +309,27 @@ fun SettingsScreen(repository: FioRepository) {
                         unfocusedTextColor = colors.textPrimary
                     )
                 )
+
+                if (providerChoice == "Google Gemini") {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Get a free Gemini API key →",
+                        color = colors.primary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable {
+                                runCatching {
+                                    context.startActivity(
+                                        Intent(Intent.ACTION_VIEW, Uri.parse("https://aistudio.google.com/apikey"))
+                                    )
+                                }
+                            }
+                            .padding(horizontal = 2.dp, vertical = 2.dp)
+                            .testTag("get_gemini_key_link")
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
@@ -296,6 +365,7 @@ fun SettingsScreen(repository: FioRepository) {
                 Button(
                     onClick = {
                         val updated = settings.copy(
+                            aiProvider = providerChoice,
                             aiApiKey = apiKeyInput.trim(),
                             aiBaseUrl = baseUrlInput.trim(),
                             aiModelName = modelNameInput.trim()
@@ -321,14 +391,14 @@ fun SettingsScreen(repository: FioRepository) {
             ) {
                 Text("Appearance & Themes", color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(6.dp))
-                Text("Select an Obsidian-inspired palette, high contrast, or light mode.", color = colors.textMuted, fontSize = 11.sp)
+                Text("Pick a dark, high contrast, or light palette.", color = colors.textMuted, fontSize = 11.sp)
                 Spacer(modifier = Modifier.height(10.dp))
 
                 val themes = listOf(
-                    "OBSIDIAN_PURPLE" to "Obsidian Purple (Default)",
+                    "OBSIDIAN_PURPLE" to "Dark",
                     "OLED_BLACK" to "OLED Black",
                     "HIGH_CONTRAST" to "High Contrast",
-                    "OBSIDIAN_LIGHT" to "Obsidian Light"
+                    "OBSIDIAN_LIGHT" to "Light (Default)"
                 )
 
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -525,7 +595,12 @@ fun SettingsScreen(repository: FioRepository) {
                             backupJsonInput = ""
                             importExportDialogState = "IMPORT"
                         },
-                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = colors.textPrimary,
+                            containerColor = colors.surfaceElevated
+                        ),
+                        border = null,
+                        shape = RoundedCornerShape(10.dp),
                         modifier = Modifier.weight(1f).testTag("import_data_button")
                     ) {
                         Icon(imageVector = Icons.Default.Restore, contentDescription = null, tint = colors.textPrimary, modifier = Modifier.size(16.dp))

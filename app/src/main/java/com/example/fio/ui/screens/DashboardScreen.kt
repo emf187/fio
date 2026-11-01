@@ -165,15 +165,15 @@ fun DashboardScreen(
                         modifier = Modifier
                             .size(42.dp)
                             .clip(CircleShape)
-                            .background(colors.primaryContainer)
-                            .border(1.5.dp, colors.primary, CircleShape),
+                            .background(colors.surfaceElevated)
+                            .border(1.dp, colors.border, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = profileName.take(1).uppercase().ifEmpty { "F" },
-                            color = colors.primary,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold
+                            color = colors.textPrimary,
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.SemiBold
                         )
                     }
                     Spacer(modifier = Modifier.width(12.dp))
@@ -257,14 +257,14 @@ fun DashboardScreen(
                         modifier = Modifier
                             .size(54.dp)
                             .clip(CircleShape)
-                            .background(colors.primaryContainer)
-                            .border(2.dp, colors.primary, CircleShape),
+                            .background(colors.surfaceElevated)
+                            .border(1.dp, colors.border, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = "${lifeScore.overallScore}",
-                            color = colors.primary,
-                            fontSize = 20.sp,
+                            color = colors.textPrimary,
+                            fontSize = 19.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -280,16 +280,19 @@ fun DashboardScreen(
             ) {
                 OutlinedButton(
                     onClick = { repository.logMeal("Quick meal") },
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.textPrimary),
-                    border = ButtonDefaults.outlinedButtonBorder.copy(brush = androidx.compose.ui.graphics.SolidColor(colors.border)),
-                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = colors.textPrimary,
+                        containerColor = colors.surfaceElevated
+                    ),
+                    border = null,
+                    shape = RoundedCornerShape(10.dp),
                     modifier = Modifier
                         .weight(1f)
                         .testTag("quick_meal_button")
                 ) {
-                    Icon(imageVector = Icons.Default.Restaurant, contentDescription = null, tint = colors.warning, modifier = Modifier.size(16.dp))
+                    Icon(imageVector = Icons.Default.Restaurant, contentDescription = null, tint = colors.textSecondary, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("I Ate", fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    Text("I Ate", fontSize = 12.sp)
                 }
 
                 OutlinedButton(
@@ -302,9 +305,12 @@ fun DashboardScreen(
                             isSleeping = true
                         }
                     },
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.textPrimary),
-                    border = ButtonDefaults.outlinedButtonBorder.copy(brush = androidx.compose.ui.graphics.SolidColor(colors.border)),
-                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = colors.textPrimary,
+                        containerColor = colors.surfaceElevated
+                    ),
+                    border = null,
+                    shape = RoundedCornerShape(10.dp),
                     modifier = Modifier
                         .weight(1.2f)
                         .testTag("quick_sleep_button")
@@ -312,24 +318,24 @@ fun DashboardScreen(
                     Icon(
                         imageVector = if (isSleeping) Icons.Default.WbSunny else Icons.Default.Bedtime,
                         contentDescription = null,
-                        tint = colors.primary,
+                        tint = colors.textSecondary,
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text(if (isSleeping) "I'm Awake" else "Sleep", fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    Text(if (isSleeping) "I'm Awake" else "Sleep", fontSize = 12.sp)
                 }
 
                 Button(
                     onClick = { onNavigate(FioScreen.TIMER) },
                     colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(10.dp),
                     modifier = Modifier
                         .weight(1f)
                         .testTag("quick_focus_button")
                 ) {
                     Icon(imageVector = Icons.Default.Timer, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Focus", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.SemiBold)
+                    Text("Focus", fontSize = 12.sp, color = Color.White)
                 }
             }
         }

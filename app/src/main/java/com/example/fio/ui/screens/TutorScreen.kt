@@ -223,7 +223,12 @@ fun TutorScreen(
                                 PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                             )
                         },
-                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = colors.textSecondary,
+                            containerColor = colors.surfaceElevated
+                        ),
+                        border = null,
+                        shape = RoundedCornerShape(10.dp),
                         modifier = Modifier.testTag("upload_past_question_photo")
                     ) {
                         Icon(imageVector = Icons.Default.AddPhotoAlternate, contentDescription = null, tint = colors.textSecondary, modifier = Modifier.size(16.dp))

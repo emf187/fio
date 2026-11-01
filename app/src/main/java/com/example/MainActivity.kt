@@ -87,14 +87,14 @@ fun FioAppContent(
                         modifier = Modifier
                             .size(36.dp)
                             .clip(RoundedCornerShape(8.dp))
-                            .background(colors.primaryContainer)
-                            .border(1.dp, colors.primary, RoundedCornerShape(8.dp)),
+                            .background(colors.surfaceElevated)
+                            .border(1.dp, colors.border, RoundedCornerShape(8.dp)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.Visibility,
                             contentDescription = "Fio Logo",
-                            tint = colors.primary,
+                            tint = colors.textPrimary,
                             modifier = Modifier.size(20.dp)
                         )
                     }

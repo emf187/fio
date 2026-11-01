@@ -238,7 +238,13 @@ fun StudyCompanionScreen(
                                 newCourseName = ""
                                 showAddCourseDialog = false
                             }
-                        }
+                        },
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = colors.textPrimary,
+                            containerColor = colors.surfaceElevated
+                        ),
+                        border = null,
+                        shape = RoundedCornerShape(10.dp)
                     ) {
                         Text("Create", color = colors.textPrimary, fontSize = 11.sp)
                     }
@@ -639,10 +645,15 @@ fun StudyCompanionScreen(
                                 Toast.makeText(context, "Import documents first to generate flashcards", Toast.LENGTH_SHORT).show()
                             }
                         },
-                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = colors.textPrimary,
+                            containerColor = colors.surfaceElevated
+                        ),
+                        border = null,
+                        shape = RoundedCornerShape(10.dp),
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text("+ Flashcards", fontSize = 10.sp, color = colors.primary)
+                        Text("+ Flashcards", fontSize = 10.sp, color = colors.textPrimary)
                     }
 
                     OutlinedButton(
@@ -665,10 +676,15 @@ fun StudyCompanionScreen(
                                 Toast.makeText(context, "Import documents first to generate study guide", Toast.LENGTH_SHORT).show()
                             }
                         },
-                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = colors.textPrimary,
+                            containerColor = colors.surfaceElevated
+                        ),
+                        border = null,
+                        shape = RoundedCornerShape(10.dp),
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text("Study Guide", fontSize = 10.sp, color = colors.primary)
+                        Text("Study Guide", fontSize = 10.sp, color = colors.textPrimary)
                     }
                 }
 
@@ -806,7 +822,12 @@ fun StudyCompanionScreen(
                                 Toast.makeText(context, "Create or select a subject above first", Toast.LENGTH_SHORT).show()
                             }
                         },
-                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = colors.textSecondary,
+                            containerColor = colors.surfaceElevated
+                        ),
+                        border = null,
+                        shape = RoundedCornerShape(10.dp),
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
                     ) {
                         Icon(imageVector = Icons.Default.EditNote, contentDescription = null, tint = colors.textSecondary, modifier = Modifier.size(16.dp))
