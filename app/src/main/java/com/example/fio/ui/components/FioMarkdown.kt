@@ -25,6 +25,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.BaselineShift
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -38,9 +39,9 @@ import com.example.fio.ui.theme.LocalFioColors
  * Trims to the essentials so streaming re-renders stay cheap on weak hardware:
  * headings, bold/italic/strikethrough, inline code, fenced code blocks, bullet
  * and numbered lists, blockquotes, horizontal rules and simple pipe tables.
- * Unfinished markdown (mid-stream `**`, open ``` fences, open $$…$$ math) is
- * shown as literal text instead of flickering or crashing — latex stays
- * readable plain text by design.
+ * Math in $…$ / $$…$$ is rendered as actual characters (Greek letters, ∫, ×,
+ * raised exponents) instead of raw LaTeX commands. Unterminated markdown
+ * (mid-stream `**`, open fences) is shown as literal text, never flicker.
  *
  * Pure function of `text`: recompose only happens when the message grows.
  */
@@ -370,16 +371,27 @@ private fun inlineAnnotated(source: String, colors: FioCustomColors): AnnotatedS
                     }
                 }
                 c == '$' -> {
-                    // Math: keep literal (fallback rule) but tint it so $x(t)$
-                    // reads as a formula rather than stray characters.
-                    val close = source.indexOf('$', i + 1)
-                    if (close > i) {
-                        pushStyle(SpanStyle(fontFamily = FontFamily.Monospace, color = colors.primary))
-                        append(source.substring(i, close + 1))
-                        pop()
-                        i = close + 1
+                    // Math: render as actual characters — Greek letters (∑, ∫,
+                    // α…Ω), ×/·/≤ operators, and superscripts/subscripts as
+                    // raised/lowered spans. Streamed LaTeX that later completes
+                    // simply re-renders once more glyphs resolve; unmatched $
+                    // survives as literal text so nothing flickers or crashes.
+                    if (source.startsWith("$$", i)) {
+                        val close = source.indexOf("$$", i + 2)
+                        if (close > i) {
+                            append(mathAnnotated(source.substring(i + 2, close), colors))
+                            i = close + 2
+                        } else {
+                            append(source.substring(i, i + 2)); i += 2
+                        }
                     } else {
-                        append(c); i++
+                        val close = source.indexOf('$', i + 1)
+                        if (close > i) {
+                            append(mathAnnotated(source.substring(i + 1, close), colors))
+                            i = close + 1
+                        } else {
+                            append(c); i++
+                        }
                     }
                 }
                 else -> {
@@ -389,6 +401,105 @@ private fun inlineAnnotated(source: String, colors: FioCustomColors): AnnotatedS
             }
         }
     }
+
+/**
+ * Renders inline math ($…$ / $$…$$) as real characters: LaTeX commands become
+ * Unicode symbols (α, Σ, ∫, ×, ≤, →, ∞ …), \frac{a}{b} and \sqrt{x} become
+ * a/b and √(x), and ^{…} / _{…} become raised/lowered spans. If a command is
+ * unknown it stays as readable plain text — math never disappears.
+ */
+private fun mathAnnotated(expr: String, colors: FioCustomColors): AnnotatedString =
+    buildAnnotatedString {
+        var symbols = expr
+        symbols = FRACTION_REGEX.replace(symbols) { m -> "(${m.groupValues[1]})/(${m.groupValues[2]})" }
+        symbols = SQRT_REGEX.replace(symbols) { m -> "√(${m.groupValues[1]})" }
+        for ((cmd, glyph) in LATEX_SYMBOLS) symbols = symbols.replace(cmd, glyph)
+
+        var i = 0
+        while (i < symbols.length) {
+            val c = symbols[i]
+            if (c == '^' || c == '_') {
+                val group = scriptGroupAfter(symbols, i + 1)
+                if (group != null) {
+                    pushStyle(
+                        SpanStyle(
+                            baselineShift = if (c == '^') BaselineShift.Superscript else BaselineShift.Subscript
+                        )
+                    )
+                    append(group.first)
+                    pop()
+                    i = group.second
+                    continue
+                }
+            }
+            append(c)
+            i++
+        }
+    }
+
+/** 1-based content after ^/_ : either a braced group or a single script char. */
+private fun scriptGroupAfter(source: String, start: Int): Pair<String, Int>? {
+    if (start >= source.length) return null
+    if (source[start] == '{') {
+        var depth = 1
+        var j = start + 1
+        while (j < source.length) {
+            when (source[j]) {
+                '{' -> depth++
+                '}' -> {
+                    depth--
+                    if (depth == 0) {
+                        val content = source.substring(start + 1, j)
+                        return content to (j + 1)
+                    }
+                }
+            }
+            j++
+        }
+        return null
+    }
+    val c = source[start]
+    if (c == '\\' || c.isLetterOrDigit()) return c.toString() to (start + 1)
+    return null
+}
+
+private val FRACTION_REGEX = Regex("""\\frac\{([^{}]*)\}\{([^{}]*)\}""")
+private val SQRT_REGEX = Regex("""\\sqrt\{([^{}]*)\}""")
+
+/** Longest-first so \rightarrow wins over \right, \int wins over \in, etc. */
+private val LATEX_SYMBOLS: List<Pair<String, String>> = listOf(
+    "\\alpha" to "α", "\\beta" to "β", "\\gamma" to "γ", "\\delta" to "δ",
+    "\\epsilon" to "ε", "\\varepsilon" to "ε", "\\zeta" to "ζ", "\\eta" to "η",
+    "\\theta" to "θ", "\\vartheta" to "ϑ", "\\iota" to "ι", "\\kappa" to "κ",
+    "\\lambda" to "λ", "\\mu" to "μ", "\\nu" to "ν", "\\xi" to "ξ", "\\omicron" to "ο",
+    "\\pi" to "π", "\\varpi" to "ϖ", "\\rho" to "ρ", "\\varrho" to "ϱ", "\\sigma" to "σ",
+    "\\varsigma" to "ς", "\\tau" to "τ", "\\upsilon" to "υ", "\\phi" to "φ",
+    "\\varphi" to "ϕ", "\\chi" to "χ", "\\psi" to "ψ", "\\omega" to "ω",
+    "\\Gamma" to "Γ", "\\Delta" to "Δ", "\\Theta" to "Θ", "\\Lambda" to "Λ",
+    "\\Xi" to "Ξ", "\\Pi" to "Π", "\\Sigma" to "Σ", "\\Upsilon" to "Υ", "\\Phi" to "Φ",
+    "\\Psi" to "Ψ", "\\Omega" to "Ω",
+    "\\sum" to "∑", "\\prod" to "∏", "\\coprod" to "∐", "\\int" to "∫", "\\oint" to "∮",
+    "\\partial" to "∂", "\\nabla" to "∇", "\\infty" to "∞", "\\hbar" to "ℏ",
+    "\\pm" to "±", "\\mp" to "∓", "\\cdot" to "·", "\\times" to "×", "\\div" to "÷",
+    "\\star" to "⋆", "\\circ" to "∘", "\\odot" to "⊙", "\\oplus" to "⊕", "\\ominus" to "⊖",
+    "\\leq" to "≤", "\\le" to "≤", "\\geq" to "≥", "\\ge" to "≥", "\\neq" to "≠",
+    "\\ne" to "≠", "\\approx" to "≈", "\\equiv" to "≡", "\\sim" to "∼", "\\simeq" to "≃",
+    "\\cong" to "≅", "\\propto" to "∝",
+    "\\Rightarrow" to "⇒", "\\rightarrow" to "→", "\\leftrightarrow" to "↔",
+    "\\leftarrow" to "←", "\\downarrow" to "↓", "\\uparrow" to "↑", "\\mapsto" to "↦",
+    "\\in" to "∈", "\\notin" to "∉", "\\ni" to "∋", "\\subset" to "⊂", "\\supset" to "⊃",
+    "\\subseteq" to "⊆", "\\supseteq" to "⊇", "\\cup" to "∪", "\\cap" to "∩",
+    "\\emptyset" to "∅", "\\varnothing" to "∅", "\\forall" to "∀", "\\exists" to "∃",
+    "\\angle" to "∠", "\\perp" to "⊥", "\\parallel" to "∥", "\\degree" to "°", "\\prime" to "′",
+    "\\Re" to "ℜ", "\\Im" to "ℑ", "\\aleph" to "ℵ",
+    "\\left" to "", "\\right" to "", "\\displaystyle" to "", "\\textstyle" to "",
+    "\\big" to "", "\\Big" to "", "\\bigg" to "", "\\Bigg" to "",
+    "\\text" to "", "\\mathrm" to "", "\\mathbf" to "", "\\mathcal" to "", "\\mathbb" to "",
+    "\\operatorname" to "", "\\limits" to "", "\\nolimits" to "",
+    "\\quad" to "  ", "\\qquad" to "    ", "\\," to " ", "\\;" to " ", "\\:" to " ",
+    "\\!" to "", "\\{" to "{", "\\}" to "}", "\\|" to "‖",
+    "\\ll" to "≪", "\\gg" to "≫", "\\lceil" to "⌈", "\\rceil" to "⌉", "\\lfloor" to "⌊", "\\rfloor" to "⌋"
+).sortedByDescending { it.first.length }
 
 private fun findInlineClose(source: String, from: Int, marker: String): Int {
     var j = from

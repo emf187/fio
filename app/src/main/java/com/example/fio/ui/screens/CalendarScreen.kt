@@ -390,24 +390,31 @@ fun CalendarScreen(repository: FioRepository) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
-                    Text("Calendar & Scheduler", color = colors.textPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                    Text("Interactive visual calendar & phone reminders sync", color = colors.textMuted, fontSize = 11.sp)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Calendar & Scheduler", color = colors.textPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    Text("Interactive visual calendar & phone reminders sync", color = colors.textMuted, fontSize = 11.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     IconButton(
                         onClick = { showIcsImportDialog = true },
-                        modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(colors.surfaceElevated)
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(colors.surfaceElevated)
                     ) {
-                        Icon(imageVector = Icons.Default.FileDownload, contentDescription = "Import .ics", tint = colors.primary)
+                        Icon(imageVector = Icons.Default.FileDownload, contentDescription = "Import .ics", tint = colors.primary, modifier = Modifier.size(18.dp))
                     }
 
                     IconButton(
                         onClick = { openEventEditor(null) },
-                        modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(colors.primary).testTag("add_calendar_event_button")
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(colors.primary)
+                            .testTag("add_calendar_event_button")
                     ) {
-                        Icon(imageVector = Icons.Default.Add, contentDescription = "Add Event", tint = Color.White)
+                        Icon(imageVector = Icons.Default.Add, contentDescription = "Add Event", tint = Color.White, modifier = Modifier.size(18.dp))
                     }
                 }
             }

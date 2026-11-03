@@ -329,6 +329,46 @@ fun SettingsScreen(repository: FioRepository) {
                             .padding(horizontal = 2.dp, vertical = 2.dp)
                             .testTag("get_gemini_key_link")
                     )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    // One-tap model picker — no hand-typing identifiers.
+                    var showModelMenu by remember { mutableStateOf(false) }
+                    Box {
+                        OutlinedButton(
+                            onClick = { showModelMenu = true },
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                            modifier = Modifier.testTag("gemini_model_picker")
+                        ) {
+                            Icon(imageVector = Icons.Default.ExpandMore, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Choose Gemini model", fontSize = 11.sp)
+                        }
+                        DropdownMenu(
+                            expanded = showModelMenu,
+                            onDismissRequest = { showModelMenu = false }
+                        ) {
+                            listOf(
+                                "gemini-3.8-flash" to "Default · current flagship",
+                                "gemini-3.6-flash" to "Fast · free tier",
+                                "gemini-3.5-flash-lite" to "Light · free tier",
+                                "gemini-3.1-flash-lite" to "Lightest · free tier"
+                            ).forEach { (model, note) ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Column {
+                                            Text(model, color = colors.textPrimary, fontSize = 12.sp)
+                                            Text(note, color = colors.textMuted, fontSize = 10.sp)
+                                        }
+                                    },
+                                    onClick = {
+                                        modelNameInput = model
+                                        showModelMenu = false
+                                    }
+                                )
+                            }
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))

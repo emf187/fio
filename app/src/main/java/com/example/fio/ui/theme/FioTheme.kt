@@ -10,11 +10,13 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
@@ -235,9 +237,16 @@ fun FioTheme(
         )
     }
 
+    // Normalize the type scale: the host's system font-scale made sp-based
+    // buttons and headings overflow (e.g. Dashboard "Focus" wrapping to
+    // "Foc us", Calendar icon buttons pushed off-screen). Fio ships its own
+    // fixed Inter ramp, so it now renders identically on every device.
+    val platformDensity = LocalDensity.current
+
     CompositionLocalProvider(
         LocalFioColors provides themedColors,
-        LocalReduceMotion provides reduceMotion
+        LocalReduceMotion provides reduceMotion,
+        LocalDensity provides Density(platformDensity.density, fontScale = 1f)
     ) {
         MaterialTheme(
             colorScheme = colorScheme,

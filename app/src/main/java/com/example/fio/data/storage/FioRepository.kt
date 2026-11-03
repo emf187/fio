@@ -375,6 +375,15 @@ class FioRepository(private val context: Context) {
         saveAll()
     }
 
+    /** Removes a message and everything after it (Edit & resend / Retry). */
+    fun deleteChatMessagesFrom(messageId: String) {
+        val idx = _chatHistory.value.indexOfFirst { it.id == messageId }
+        if (idx >= 0) {
+            _chatHistory.value = _chatHistory.value.take(idx)
+            saveAll()
+        }
+    }
+
     fun clearChatHistory(courseId: String? = null) {
         _chatHistory.value = if (courseId != null) {
             _chatHistory.value.filterNot { it.courseId == courseId }

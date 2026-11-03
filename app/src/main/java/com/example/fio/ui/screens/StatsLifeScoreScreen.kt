@@ -98,9 +98,22 @@ fun StatsLifeScoreScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
-                    Text("Stats & Life Score", color = colors.textPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                    Text("Holistic self-knowledge across mind, body, and habits", color = colors.textMuted, fontSize = 11.sp)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Stats & Life Score",
+                        color = colors.textPrimary,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                    Text(
+                        "Holistic self-knowledge across mind, body, and habits",
+                        color = colors.textMuted,
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
                 }
 
                 Row(

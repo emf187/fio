@@ -210,6 +210,7 @@ fun FioSidebarDrawer(
                     customLabel = if (profileName.isNotBlank()) profileName else null
                 )
                 NavItem(FioScreen.CALENDAR, currentScreen, onSelectScreen, onClose)
+                NavItem(FioScreen.TIMETABLE, currentScreen, onSelectScreen, onClose)
                 NavItem(FioScreen.TIMER, currentScreen, onSelectScreen, onClose)
 
                 Spacer(modifier = Modifier.height(10.dp))

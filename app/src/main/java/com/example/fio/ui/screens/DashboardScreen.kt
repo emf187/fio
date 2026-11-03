@@ -286,13 +286,14 @@ fun DashboardScreen(
                     ),
                     border = null,
                     shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
                     modifier = Modifier
                         .weight(1f)
                         .testTag("quick_meal_button")
                 ) {
                     Icon(imageVector = Icons.Default.Restaurant, contentDescription = null, tint = colors.textSecondary, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("I Ate", fontSize = 12.sp)
+                    Text("I Ate", fontSize = 12.sp, maxLines = 1, softWrap = false)
                 }
 
                 OutlinedButton(
@@ -311,6 +312,7 @@ fun DashboardScreen(
                     ),
                     border = null,
                     shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
                     modifier = Modifier
                         .weight(1.2f)
                         .testTag("quick_sleep_button")
@@ -322,20 +324,21 @@ fun DashboardScreen(
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text(if (isSleeping) "I'm Awake" else "Sleep", fontSize = 12.sp)
+                    Text(if (isSleeping) "I'm Awake" else "Sleep", fontSize = 12.sp, maxLines = 1, softWrap = false)
                 }
 
                 Button(
                     onClick = { onNavigate(FioScreen.TIMER) },
                     colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
                     shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
                     modifier = Modifier
                         .weight(1f)
                         .testTag("quick_focus_button")
                 ) {
                     Icon(imageVector = Icons.Default.Timer, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Focus", fontSize = 12.sp, color = Color.White)
+                    Text("Focus", fontSize = 12.sp, color = Color.White, maxLines = 1, softWrap = false)
                 }
             }
         }

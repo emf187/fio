@@ -21,8 +21,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -40,8 +42,10 @@ import com.example.fio.ui.components.FioMarkdown
 import com.example.fio.ui.components.FioDivider
 import com.example.fio.ui.reader.FioReaderHost
 import com.example.fio.ui.theme.LocalFioColors
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
@@ -77,6 +81,12 @@ fun StudyCompanionScreen(
     val courseDocs = documents.filter { it.courseId == selectedCourseId }
     val courseFlashcards = flashcards.filter { it.courseId == selectedCourseId }
     val courseChatMessages = chatHistory.filter { it.courseId == selectedCourseId }
+
+    // Claude-style conversation title: the chat is named after its first
+    // question, so each subject session reads like a titled conversation.
+    val chatTitle = courseChatMessages.firstOrNull { it.sender == "You" }
+        ?.text?.trim()?.lineSequence()?.firstOrNull()?.trim()?.take(44)
+        ?.ifBlank { null } ?: "New Chat"
 
     // Active Reader State
     var activeReadingDoc by remember { mutableStateOf<StudyDocument?>(null) }
@@ -135,7 +145,56 @@ fun StudyCompanionScreen(
     var aiQuery by remember { mutableStateOf("") }
     var isAiLoading by remember { mutableStateOf(false) }
     var coursePhotoUri by remember { mutableStateOf<Uri?>(null) }
-    var showChatHistory by remember { mutableStateOf(true) }
+    // Claude-style tabs inside the chat window: Chat (live) / History (log).
+    var chatTab by remember { mutableStateOf(0) }
+    var aiJob by remember { mutableStateOf<Job?>(null) }
+    val clipboard = LocalClipboardManager.current
+
+    // One shared path for the send button, Retry and Edit-and-resend, so the
+    // chat behaves like a real LLM conversation from every entry point.
+    fun launchStudyQuery(prompt: String, photoUri: Uri?) {
+        val activeCourse = currentCourse ?: return
+        if (prompt.isBlank() || isAiLoading) return
+        isAiLoading = true
+        repository.addChatMessage(ChatMessage(sender = "You", text = prompt, courseId = activeCourse.id))
+        aiQuery = ""
+        aiJob = coroutineScope.launch {
+            try {
+                val storedImg = if (photoUri != null) ImageStorage.processAndStoreImage(context, photoUri) else null
+                val chunks = courseDocs.flatMap { it.chunks }
+                when (val res = aiClient.sendPrompt(
+                    prompt = prompt,
+                    systemInstruction = "You are Wingman, a precise personal study tutor answering questions based on course material and diagrams. Subject: ${activeCourse.name}",
+                    settings = settings,
+                    chunks = chunks,
+                    imageBase64 = storedImg?.second
+                )) {
+                    is AiResult.Success -> {
+                        repository.addChatMessage(ChatMessage(sender = "Wingman", text = res.data, courseId = activeCourse.id))
+                    }
+                    is AiResult.Error -> {
+                        val err = res.message
+                        val needsKeyHint = err.contains("401") || err.contains("403") ||
+                            err.contains("API key", ignoreCase = true) || err.contains("quota", ignoreCase = true)
+                        val hint = if (needsKeyHint) " Check your API Key in Settings." else ""
+                        repository.addChatMessage(ChatMessage(sender = "Wingman", text = "Could not reach AI: $err.$hint", courseId = activeCourse.id))
+                    }
+                }
+            } finally {
+                isAiLoading = false
+            }
+        }
+    }
+
+    // Stop button on the loading state: cancels the in-flight request.
+    fun cancelStudyQuery() {
+        aiJob?.cancel()
+        aiJob = null
+        isAiLoading = false
+        if (selectedCourseId.isNotBlank()) {
+            repository.addChatMessage(ChatMessage(sender = "Wingman", text = "Response stopped.", courseId = selectedCourseId))
+        }
+    }
 
     val coursePhotoPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia(),
@@ -480,27 +539,35 @@ fun StudyCompanionScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(imageVector = Icons.Default.AutoAwesome, contentDescription = null, tint = colors.primary, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
+                    // Claude-style: the conversation's own title, auto-built
+                    // from the first question of the session.
                     Text(
-                        text = "Wingman: ${currentCourse?.name ?: "No Subject Selected"}",
+                        text = chatTitle,
                         color = colors.textPrimary,
                         fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = (-0.1).sp,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f).testTag("chat_title")
                     )
-                    Spacer(modifier = Modifier.weight(1f))
+                    // History: now lives in the History tab inside the chat.
                     if (courseChatMessages.isNotEmpty()) {
                         TextButton(
                             onClick = { repository.clearChatHistory(selectedCourseId) },
                             contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
                         ) {
-                            Text("Clear Session", color = colors.textMuted, fontSize = 10.sp)
+                            Text("New Chat", color = colors.textMuted, fontSize = 10.sp)
                         }
                     }
                 }
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Answers questions, analyzes images/diagrams, and summarizes using your documents.",
+                    text = "Wingman · ${currentCourse?.name ?: "No Subject Selected"} — answers, images, summaries",
                     color = colors.textMuted,
-                    fontSize = 11.sp
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
 
                 // Optional attached image preview
@@ -559,60 +626,24 @@ fun StudyCompanionScreen(
                     Spacer(modifier = Modifier.width(6.dp))
                     IconButton(
                         onClick = {
-                            if ((aiQuery.isNotBlank() || coursePhotoUri != null) && !isAiLoading && currentCourse != null) {
+                            if (isAiLoading) {
+                                cancelStudyQuery()
+                            } else if ((aiQuery.isNotBlank() || coursePhotoUri != null) && currentCourse != null) {
                                 val queryText = aiQuery.ifBlank { "Please examine this attached image and explain it in the context of the course material." }
-                                val activeCourse = currentCourse
-                                isAiLoading = true
-                                val userMsg = ChatMessage(
-                                    sender = "You",
-                                    text = queryText,
-                                    courseId = activeCourse.id
-                                )
-                                repository.addChatMessage(userMsg)
-                                aiQuery = ""
-
-                                coroutineScope.launch {
-                                    val storedImg = if (coursePhotoUri != null) ImageStorage.processAndStoreImage(context, coursePhotoUri!!) else null
-                                    coursePhotoUri = null
-                                    val chunks = courseDocs.flatMap { it.chunks }
-                                    when (val res = aiClient.sendPrompt(
-                                        prompt = queryText,
-                                        systemInstruction = "You are Wingman, a precise personal study tutor answering questions based on course material and diagrams. Subject: ${activeCourse.name}",
-                                        settings = settings,
-                                        chunks = chunks,
-                                        imageBase64 = storedImg?.second
-                                    )) {
-                                        is AiResult.Success -> {
-                                            repository.addChatMessage(
-                                                ChatMessage(
-                                                    sender = "Wingman",
-                                                    text = res.data,
-                                                    courseId = activeCourse.id
-                                                )
-                                            )
-                                        }
-                                        is AiResult.Error -> {
-                                            repository.addChatMessage(
-                                                ChatMessage(
-                                                    sender = "Wingman",
-                                                    text = "Could not reach AI: ${res.message}. Check your API Key in Settings.",
-                                                    courseId = activeCourse.id
-                                                )
-                                            )
-                                        }
-                                    }
-                                    isAiLoading = false
-                                }
+                                val img = coursePhotoUri
+                                coursePhotoUri = null
+                                launchStudyQuery(queryText, img)
                             }
                         },
-                        enabled = currentCourse != null && !isAiLoading,
+                        enabled = currentCourse != null,
                         modifier = Modifier
                             .clip(RoundedCornerShape(12.dp))
                             .background(colors.primaryContainer)
                             .testTag("course_ai_query_submit")
                     ) {
                         if (isAiLoading) {
-                            CircularProgressIndicator(modifier = Modifier.size(18.dp), color = colors.primary, strokeWidth = 2.dp)
+                            // Stop: cancels the in-flight response.
+                            Icon(imageVector = Icons.Default.Close, contentDescription = "Stop generating", tint = colors.error)
                         } else {
                             Icon(imageVector = Icons.Default.Send, contentDescription = "Query", tint = colors.primary)
                         }
@@ -689,76 +720,262 @@ fun StudyCompanionScreen(
                     }
                 }
 
-                // Chat History Stream for this Course
-                if (courseChatMessages.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    FioDivider()
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth().clickable { showChatHistory = !showChatHistory },
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "Study Session Chat History (${courseChatMessages.size})",
-                            color = colors.textSecondary,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Icon(
-                            imageVector = if (showChatHistory) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                            contentDescription = null,
-                            tint = colors.textMuted,
-                            modifier = Modifier.size(16.dp)
-                        )
+                // Claude-style tabs inside the chat window: the live chat vs
+                // the full history log for this subject.
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(colors.surfaceElevated)
+                        .testTag("chat_tabs")
+                        .padding(2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    listOf("Chat" to 0, "History (${courseChatMessages.size})" to 1).forEach { (tabLabel, tabIndex) ->
+                        val isSelected = chatTab == tabIndex
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(9.dp))
+                                .background(if (isSelected) colors.primaryContainer else Color.Transparent)
+                                .clickable { chatTab = tabIndex }
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = tabLabel,
+                                color = if (isSelected) colors.primary else colors.textMuted,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1
+                            )
+                        }
                     }
+                }
 
-                    if (showChatHistory) {
-                        val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
+                val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
+                val dayFormat = remember { SimpleDateFormat("d MMM", Locale.getDefault()) }
+
+                // One bubble renderer shared by the Chat tab and expanded History sessions.
+                val chatBubble: @Composable (ChatMessage) -> Unit = { msg ->
+                            val isUser = msg.sender == "You"
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(if (isUser) colors.surface else colors.background)
+                                    .border(1.dp, if (isUser) colors.border else colors.primary.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                                    .padding(8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = if (isUser) "You" else "Wingman",
+                                        color = if (isUser) colors.primary else colors.info,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 10.sp
+                                    )
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = timeFormat.format(Date(msg.timestampMillis)),
+                                            color = colors.textMuted,
+                                            fontSize = 9.sp
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        // Copy — every message, one tap.
+                                        Icon(
+                                            imageVector = Icons.Default.ContentCopy,
+                                            contentDescription = "Copy message",
+                                            tint = colors.textMuted,
+                                            modifier = Modifier
+                                                .size(13.dp)
+                                                .clickable {
+                                                    clipboard.setText(AnnotatedString(msg.text))
+                                                    Toast.makeText(context, "Message copied", Toast.LENGTH_SHORT).show()
+                                                }
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        if (isUser) {
+                                            // Edit & resend: rewinds the chat to
+                                            // just before this question.
+                                            Icon(
+                                                imageVector = Icons.Default.Edit,
+                                                contentDescription = "Edit and resend",
+                                                tint = colors.textMuted,
+                                                modifier = Modifier
+                                                    .size(13.dp)
+                                                    .clickable {
+                                                        repository.deleteChatMessagesFrom(msg.id)
+                                                        aiQuery = msg.text
+                                                        Toast.makeText(context, "Edit your message, then press send", Toast.LENGTH_SHORT).show()
+                                                    }
+                                            )
+                                        } else if (msg.text.startsWith("Could not reach AI")) {
+                                            // Retry a failed request with the same prompt.
+                                            Text(
+                                                text = "Retry",
+                                                color = colors.primary,
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                modifier = Modifier.clickable {
+                                                    val failedPrompt = courseChatMessages.lastOrNull { it.sender == "You" }?.text
+                                                    if (failedPrompt != null) {
+                                                        repository.deleteChatMessagesFrom(msg.id)
+                                                        launchStudyQuery(failedPrompt, null)
+                                                    }
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                if (isUser) {
+                                    Text(
+                                        text = msg.text,
+                                        color = colors.textPrimary,
+                                        fontSize = 11.sp,
+                                        lineHeight = 15.sp
+                                    )
+                                } else {
+                                    FioMarkdown(
+                                        text = msg.text,
+                                        baseFontSize = 11.sp
+                                    )
+                                }
+                            }
+                }
+
+                if (chatTab == 0) {
+                    // --- Chat tab: live rolling context, last 4 messages ---
+                    val recent = courseChatMessages.takeLast(4)
+                    if (recent.isNotEmpty()) {
                         Column(
                             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            courseChatMessages.takeLast(10).forEach { msg ->
-                                val isUser = msg.sender == "You"
+                            recent.forEach { chatBubble(it) }
+                        }
+                    } else {
+                        Text("Ask your first question to start the chat.", color = colors.textMuted, fontSize = 11.sp)
+                    }
+                } else {
+                    // --- History tab: past chats grouped into dated sessions ---
+                    if (courseChatMessages.isEmpty()) {
+                        Text("No saved messages yet.", color = colors.textMuted, fontSize = 11.sp)
+                    } else {
+                        // A new session starts whenever there is a long pause
+                        // (> 30 min) between messages, so the log reads like
+                        // separate conversations instead of one endless list.
+                        val sessions = remember(courseChatMessages) {
+                            val gapMs = 30L * 60L * 1000L
+                            val groups = mutableListOf<MutableList<ChatMessage>>()
+                            courseChatMessages.forEach { msg ->
+                                val current = groups.lastOrNull()
+                                if (current == null || msg.timestampMillis - current.last().timestampMillis > gapMs) {
+                                    groups.add(mutableListOf(msg))
+                                } else {
+                                    current.add(msg)
+                                }
+                            }
+                            groups.map { it.toList() }.reversed()
+                        }
+                        var expandedSession by remember { mutableStateOf<String?>(null) }
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            sessions.forEach { session ->
+                                val sessionKey = session.first().id
+                                val isExpanded = expandedSession == sessionKey
+                                val firstTs = session.first().timestampMillis
+                                val startCal = Calendar.getInstance().apply { timeInMillis = firstTs }
+                                val nowCal = Calendar.getInstance()
+                                val yesterdayCal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -1) }
+                                val dateLabel = when {
+                                    startCal.get(Calendar.YEAR) == nowCal.get(Calendar.YEAR) &&
+                                        startCal.get(Calendar.DAY_OF_YEAR) == nowCal.get(Calendar.DAY_OF_YEAR) ->
+                                        "Today · ${timeFormat.format(Date(firstTs))}"
+                                    startCal.get(Calendar.YEAR) == yesterdayCal.get(Calendar.YEAR) &&
+                                        startCal.get(Calendar.DAY_OF_YEAR) == yesterdayCal.get(Calendar.DAY_OF_YEAR) ->
+                                        "Yesterday · ${timeFormat.format(Date(firstTs))}"
+                                    startCal.get(Calendar.YEAR) == nowCal.get(Calendar.YEAR) ->
+                                        dayFormat.format(Date(firstTs))
+                                    else ->
+                                        SimpleDateFormat("d MMM yyyy", Locale.getDefault()).format(Date(firstTs))
+                                }
+                                val title = session.firstOrNull { it.sender == "You" }?.text
+                                    ?.lineSequence()?.firstOrNull()?.trim()
+                                    ?.let { if (it.length > 46) it.take(46).trimEnd() + "…" else it }
+                                    ?.takeIf { it.isNotBlank() }
+                                    ?: "Wingman chat"
+                                val lastText = session.last().text
+                                val description = when {
+                                    lastText.startsWith("Could not reach AI") ->
+                                        "AI was unreachable — tap to read the conversation."
+                                    else -> lastText
+                                        .lineSequence()
+                                        .firstOrNull { it.isNotBlank() }
+                                        ?.trim()
+                                        ?.let { if (it.length > 90) it.take(90).trimEnd() + "…" else it }
+                                        ?: "No summary available."
+                                }
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clip(RoundedCornerShape(12.dp))
-                                        .background(if (isUser) colors.surface else colors.background)
-                                        .border(1.dp, if (isUser) colors.border else colors.primary.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
-                                        .padding(8.dp)
+                                        .background(colors.surface)
+                                        .border(1.dp, colors.border, RoundedCornerShape(12.dp))
+                                        .clickable { expandedSession = if (isExpanded) null else sessionKey }
+                                        .padding(10.dp)
                                 ) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
+                                        Text(dateLabel, color = colors.textMuted, fontSize = 9.sp)
                                         Text(
-                                            text = if (isUser) "You" else "Wingman",
-                                            color = if (isUser) colors.primary else colors.info,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 10.sp
-                                        )
-                                        Text(
-                                            text = timeFormat.format(Date(msg.timestampMillis)),
+                                            text = if (session.size == 1) "1 message" else "${session.size} messages",
                                             color = colors.textMuted,
                                             fontSize = 9.sp
                                         )
                                     }
+                                    Spacer(modifier = Modifier.height(3.dp))
+                                    Text(
+                                        text = title,
+                                        color = colors.textPrimary,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = description,
+                                        color = colors.textSecondary,
+                                        fontSize = 10.sp,
+                                        lineHeight = 14.sp,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
                                     Spacer(modifier = Modifier.height(4.dp))
-                                    if (isUser) {
-                                        Text(
-                                            text = msg.text,
-                                            color = colors.textPrimary,
-                                            fontSize = 11.sp,
-                                            lineHeight = 15.sp
-                                        )
-                                    } else {
-                                        FioMarkdown(
-                                            text = msg.text,
-                                            baseFontSize = 11.sp
-                                        )
+                                    Text(
+                                        text = if (isExpanded) "Tap to collapse" else "Tap to open conversation",
+                                        color = colors.primary,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                                if (isExpanded) {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth().padding(start = 6.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        session.forEach { chatBubble(it) }
                                     }
                                 }
                             }
