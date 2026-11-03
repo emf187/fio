@@ -22,6 +22,8 @@ build/
 **/build/
 *.apk
 *.aab
+# Keep the ready-to-install app in the repo for easy download
+!dist/*.apk
 
 # Local/reference projects
 Areada-main/

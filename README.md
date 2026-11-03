@@ -2,6 +2,14 @@
 <img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
 </div>
 
+# Fio — offline-first study planner with an AI study companion
+
+**Download:** [`dist/Fio-1.0.apk`](dist/Fio-1.0.apk) — signed installable build (Android 8.0+)
+
+Install it on your phone (allow "install unknown apps" for your browser/file manager), then add your free Gemini API key in **Settings → AI Provider** to enable Wingman chat, flashcards and study guides.
+
+---
+
 # Run and deploy your AI Studio app
 
 This contains everything you need to run your app locally.
