@@ -273,7 +273,7 @@ fun HealthTrackingScreen(repository: FioRepository) {
                                 )
                             }
                             Text(
-                                text = "${formatTimeOnly(s.startTimeMillis)} - ${formatTimeOnly(s.endTimeMillis)} â€¢ Logged: ${formatTimestamp(s.loggedAtMillis)}",
+                                text = "${formatTimeOnly(s.startTimeMillis)} - ${formatTimeOnly(s.endTimeMillis)} • Logged: ${formatTimestamp(s.loggedAtMillis)}",
                                 color = colors.textMuted,
                                 fontSize = 9.sp
                             )
@@ -360,7 +360,7 @@ fun HealthTrackingScreen(repository: FioRepository) {
                             Text(text = "Eaten at: ${formatTimeOnly(meal.timestampMillis)}", color = colors.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                             Text(
                                 text = "Recorded: ${formatTimestamp(meal.loggedAtMillis)}" +
-                                        if (meal.editedAtMillis != null) " â€¢ Edited: ${formatTimestamp(meal.editedAtMillis)}" else "",
+                                        if (meal.editedAtMillis != null) " • Edited: ${formatTimestamp(meal.editedAtMillis)}" else "",
                                 color = colors.textMuted,
                                 fontSize = 9.sp
                             )

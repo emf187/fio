@@ -632,7 +632,7 @@ fun SettingsScreen(repository: FioRepository) {
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "â€¢ Download ZIP: In the Google AI Studio menu (top bar), click 'Export project as ZIP' to download the entire Android project.\nâ€¢ GitHub Sync: Export directly to your GitHub repository.\nâ€¢ APK Installation: Download the built debug APK to install directly on your tablet or phone.",
+                    text = "• Download ZIP: In the Google AI Studio menu (top bar), click 'Export project as ZIP' to download the entire Android project.\n• GitHub Sync: Export directly to your GitHub repository.\n• APK Installation: Download the built debug APK to install directly on your tablet or phone.",
                     color = colors.textSecondary,
                     fontSize = 11.sp,
                     lineHeight = 16.sp

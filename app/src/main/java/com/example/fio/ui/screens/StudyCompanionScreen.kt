@@ -36,6 +36,7 @@ import com.example.fio.data.storage.FioRepository
 import com.example.fio.data.storage.ImageStorage
 import com.example.fio.ui.components.FioBadge
 import com.example.fio.ui.components.FioCard
+import com.example.fio.ui.components.FioMarkdown
 import com.example.fio.ui.components.FioDivider
 import com.example.fio.ui.reader.FioReaderHost
 import com.example.fio.ui.theme.LocalFioColors
@@ -746,12 +747,19 @@ fun StudyCompanionScreen(
                                         )
                                     }
                                     Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = msg.text,
-                                        color = colors.textPrimary,
-                                        fontSize = 11.sp,
-                                        lineHeight = 15.sp
-                                    )
+                                    if (isUser) {
+                                        Text(
+                                            text = msg.text,
+                                            color = colors.textPrimary,
+                                            fontSize = 11.sp,
+                                            lineHeight = 15.sp
+                                        )
+                                    } else {
+                                        FioMarkdown(
+                                            text = msg.text,
+                                            baseFontSize = 11.sp
+                                        )
+                                    }
                                 }
                             }
                         }

@@ -515,7 +515,11 @@ fun DashboardScreen(
                             Text("Wingman Response", color = colors.primary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text(text = reply, color = colors.textPrimary, fontSize = 12.sp, lineHeight = 16.sp)
+                        FioMarkdown(
+                            text = reply,
+                            baseFontSize = 12.sp,
+                            modifier = Modifier.fillMaxWidth()
+                        )
 
                         // Action execution list
                         if (agentPendingActions.isNotEmpty()) {
@@ -563,12 +567,18 @@ fun DashboardScreen(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text("Today's Schedule", color = colors.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                Text(
-                    text = "View Calendar â†’",
-                    color = colors.primary,
-                    fontSize = 12.sp,
-                    modifier = Modifier.clickable { onNavigate(FioScreen.CALENDAR) }
-                )
+                Row(
+                    modifier = Modifier.clickable { onNavigate(FioScreen.CALENDAR) },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("View Calendar", color = colors.primary, fontSize = 12.sp)
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = colors.primary,
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
             }
         }
 
@@ -625,7 +635,7 @@ fun DashboardScreen(
                                 fontSize = 11.sp
                             )
                             Text(
-                                text = "Logged: ${formatTimestamp(event.loggedAtMillis)}${if (event.editedAtMillis != null) " â€¢ Edited: ${formatTimestamp(event.editedAtMillis)}" else ""}",
+                                text = "Logged: ${formatTimestamp(event.loggedAtMillis)}${if (event.editedAtMillis != null) " • Edited: ${formatTimestamp(event.editedAtMillis)}" else ""}",
                                 color = colors.textMuted,
                                 fontSize = 9.sp
                             )

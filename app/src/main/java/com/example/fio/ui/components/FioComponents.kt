@@ -31,6 +31,7 @@ import com.example.fio.ui.theme.LocalFioColors
 enum class FioScreen(val title: String, val icon: ImageVector) {
     DASHBOARD("Dashboard", Icons.Default.Dashboard),
     CALENDAR("Calendar & Schedule", Icons.Default.CalendarMonth),
+    TIMETABLE("Timetable", Icons.Default.Schedule),
     STUDY("Study Companion", Icons.AutoMirrored.Filled.MenuBook),
     TUTOR("Tutor & Practice", Icons.Default.School),
     TIMER("Timer & Lockdown", Icons.Default.Timer),

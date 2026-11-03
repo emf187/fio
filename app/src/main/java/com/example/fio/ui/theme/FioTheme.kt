@@ -4,13 +4,65 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
+import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.R
+
+/**
+ * Bundled Inter (SIL OFL). The app must never depend on the device skin font —
+ * TECNO/HiOS substitutes a display font whose "1" reads like "I", which broke
+ * grace counters, calendar digits and scores. Inter has clean, still-readable
+ * numerals at every size.
+ */
+val InterFamily = FontFamily(
+    Font(R.font.inter_regular, FontWeight.Normal),
+    Font(R.font.inter_medium, FontWeight.Medium),
+    Font(R.font.inter_semibold, FontWeight.SemiBold),
+    Font(R.font.inter_bold, FontWeight.Bold)
+)
+
+private fun fioStyle(
+    size: androidx.compose.ui.unit.TextUnit,
+    weight: FontWeight,
+    lineHeight: androidx.compose.ui.unit.TextUnit,
+    tracking: Double = 0.0
+) = TextStyle(
+    fontFamily = InterFamily,
+    fontSize = size,
+    fontWeight = weight,
+    lineHeight = lineHeight,
+    letterSpacing = tracking.sp
+)
+
+/** Inter across the whole Material type scale — one font, everywhere. */
+private val FioTypography = Typography(
+    displayLarge = fioStyle(57.sp, FontWeight.Normal, 64.sp),
+    displayMedium = fioStyle(45.sp, FontWeight.Normal, 52.sp),
+    displaySmall = fioStyle(36.sp, FontWeight.Normal, 44.sp),
+    headlineLarge = fioStyle(32.sp, FontWeight.SemiBold, 40.sp),
+    headlineMedium = fioStyle(28.sp, FontWeight.SemiBold, 36.sp),
+    headlineSmall = fioStyle(24.sp, FontWeight.SemiBold, 32.sp),
+    titleLarge = fioStyle(22.sp, FontWeight.SemiBold, 28.sp),
+    titleMedium = fioStyle(16.sp, FontWeight.SemiBold, 24.sp, 0.15),
+    titleSmall = fioStyle(14.sp, FontWeight.Medium, 20.sp, 0.1),
+    bodyLarge = fioStyle(16.sp, FontWeight.Normal, 24.sp, 0.5),
+    bodyMedium = fioStyle(14.sp, FontWeight.Normal, 20.sp, 0.25),
+    bodySmall = fioStyle(12.sp, FontWeight.Normal, 16.sp, 0.4),
+    labelLarge = fioStyle(14.sp, FontWeight.Medium, 20.sp, 0.1),
+    labelMedium = fioStyle(12.sp, FontWeight.Medium, 16.sp, 0.5),
+    labelSmall = fioStyle(11.sp, FontWeight.Medium, 16.sp, 0.5)
+)
 
 // Dark neutral (Notion-like dark: warm charcoal, hairline borders)
 val ObsidianBg = Color(0xFF191919)
@@ -190,6 +242,7 @@ fun FioTheme(
         MaterialTheme(
             colorScheme = colorScheme,
             shapes = FioShapes,
+            typography = FioTypography,
             content = content
         )
     }

@@ -219,6 +219,9 @@ fun FioAppContent(
                     FioScreen.CALENDAR -> CalendarScreen(
                         repository = repository
                     )
+                    FioScreen.TIMETABLE -> TimetableScreen(
+                        repository = repository
+                    )
                     FioScreen.STUDY -> StudyCompanionScreen(
                         repository = repository,
                         aiClient = aiClient

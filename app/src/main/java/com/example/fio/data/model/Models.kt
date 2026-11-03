@@ -235,6 +235,22 @@ data class CategoryWeights(
     val goals: Double = 0.10
 )
 
+/**
+ * One full-width row of the user's editable class timetable, e.g.
+ * "Physics · Mon 07:45–08:30 · Room B". Rows are fully customizable from the
+ * timetable screen: title, room, day, times and an optional phone alarm.
+ */
+data class TimetablePeriod(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val title: String,
+    val room: String = "",
+    /** 1 = Monday … 7 = Sunday (Mon-first to keep the screen ordering simple). */
+    val dayOfWeek: Int = 1,
+    val startMinutes: Int = 540, // minutes from midnight, 07:45 = 465
+    val endMinutes: Int = 585,
+    val alarmEnabled: Boolean = true
+)
+
 data class AppSettings(
     val aiProvider: String = "Google Gemini", // Google Gemini (default), OpenRouter, Custom
     val aiBaseUrl: String = "https://generativelanguage.googleapis.com/v1beta/openai",

@@ -84,6 +84,10 @@ class FioRepository(private val context: Context) {
     private val _chatHistory = MutableStateFlow<List<ChatMessage>>(emptyList())
     val chatHistory: StateFlow<List<ChatMessage>> = _chatHistory.asStateFlow()
 
+    /** Editable class timetable; sorted Monday-first, then by start time. */
+    private val _timetable = MutableStateFlow<List<TimetablePeriod>>(emptyList())
+    val timetable: StateFlow<List<TimetablePeriod>> = _timetable.asStateFlow()
+
     private val _galleryImages = MutableStateFlow<List<GalleryImage>>(emptyList())
     val galleryImages: StateFlow<List<GalleryImage>> = _galleryImages.asStateFlow()
 
@@ -162,6 +166,7 @@ class FioRepository(private val context: Context) {
         }
 
         _galleryImages.value = loadGalleryImages()
+        loadTimetable()
     }
 
     /**
@@ -308,6 +313,63 @@ class FioRepository(private val context: Context) {
     }
 
     // --- Chat History (Wingman Study Sessions) ---
+    // --- Timetable (fully customizable class schedule with phone alarms) ---
+
+    fun upsertTimetablePeriod(period: TimetablePeriod) {
+        val others = _timetable.value.filterNot { it.id == period.id }
+        _timetable.value = (others + period).sortedBy { (it.dayOfWeek * 24 * 60) + it.startMinutes }
+        persistTimetable()
+    }
+
+    fun deleteTimetablePeriod(id: String) {
+        _timetable.value = _timetable.value.filterNot { it.id == id }
+        persistTimetable()
+    }
+
+    private fun persistTimetable() {
+        val arr = JSONArray()
+        for (p in _timetable.value) {
+            arr.put(
+                JSONObject()
+                    .put("id", p.id)
+                    .put("title", p.title)
+                    .put("room", p.room)
+                    .put("dayOfWeek", p.dayOfWeek)
+                    .put("startMinutes", p.startMinutes)
+                    .put("endMinutes", p.endMinutes)
+                    .put("alarmEnabled", p.alarmEnabled)
+            )
+        }
+        val json = arr.toString()
+        prefs.edit().putString("timetable_json", json).apply()
+        // The boot receiver can't reach this repository — mirror the periods to
+        // a small prefs file it can read when re-arming alarms after a restart.
+        com.example.fio.alarms.TimetableAlarms.storePeriods(context, json)
+    }
+
+    private fun loadTimetable() {
+        val raw = prefs.getString("timetable_json", null) ?: return
+        runCatching {
+            val arr = JSONArray(raw)
+            val list = mutableListOf<TimetablePeriod>()
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                list.add(
+                    TimetablePeriod(
+                        id = o.optString("id", UUID.randomUUID().toString()),
+                        title = o.optString("title", "Period"),
+                        room = o.optString("room", ""),
+                        dayOfWeek = o.optInt("dayOfWeek", 1).coerceIn(1, 7),
+                        startMinutes = o.optInt("startMinutes", 540),
+                        endMinutes = o.optInt("endMinutes", 585),
+                        alarmEnabled = o.optBoolean("alarmEnabled", true)
+                    )
+                )
+            }
+            _timetable.value = list.sortedBy { (it.dayOfWeek * 24 * 60) + it.startMinutes }
+        }
+    }
+
     fun addChatMessage(msg: ChatMessage) {
         _chatHistory.value = _chatHistory.value + msg
         saveAll()
@@ -653,6 +715,22 @@ class FioRepository(private val context: Context) {
         }
         root.put("events", eventsArray)
 
+        // Editable class timetable
+        val timetableArray = JSONArray()
+        for (p in _timetable.value) {
+            timetableArray.put(
+                JSONObject()
+                    .put("id", p.id)
+                    .put("title", p.title)
+                    .put("room", p.room)
+                    .put("dayOfWeek", p.dayOfWeek)
+                    .put("startMinutes", p.startMinutes)
+                    .put("endMinutes", p.endMinutes)
+                    .put("alarmEnabled", p.alarmEnabled)
+            )
+        }
+        root.put("timetable", timetableArray)
+
         // 2. Export habits & streak progress
         val habitsArray = JSONArray()
         for (h in _habits.value) {
@@ -911,6 +989,38 @@ class FioRepository(private val context: Context) {
                     )
                 }
                 _events.value = list
+            }
+
+            // Editable class timetable
+            if (root.has("timetable")) {
+                val tArray = root.getJSONArray("timetable")
+                val tList = mutableListOf<TimetablePeriod>()
+                for (i in 0 until tArray.length()) {
+                    val obj = tArray.getJSONObject(i)
+                    tList.add(
+                        TimetablePeriod(
+                            id = obj.optString("id", UUID.randomUUID().toString()),
+                            title = obj.optString("title", "Period"),
+                            room = obj.optString("room", ""),
+                            dayOfWeek = obj.optInt("dayOfWeek", 1).coerceIn(1, 7),
+                            startMinutes = obj.optInt("startMinutes", 540),
+                            endMinutes = obj.optInt("endMinutes", 585),
+                            alarmEnabled = obj.optBoolean("alarmEnabled", true)
+                        )
+                    )
+                }
+                _timetable.value = tList.sortedBy { (it.dayOfWeek * 24 * 60) + it.startMinutes }
+                val tArr = JSONArray()
+                for (p in tList) {
+                    tArr.put(
+                        JSONObject()
+                            .put("id", p.id).put("title", p.title).put("room", p.room)
+                            .put("dayOfWeek", p.dayOfWeek).put("startMinutes", p.startMinutes)
+                            .put("endMinutes", p.endMinutes).put("alarmEnabled", p.alarmEnabled)
+                    )
+                }
+                prefs.edit().putString("timetable_json", tArr.toString()).apply()
+                com.example.fio.alarms.TimetableAlarms.storePeriods(context, tArr.toString())
             }
 
             // Habits & streak progress
