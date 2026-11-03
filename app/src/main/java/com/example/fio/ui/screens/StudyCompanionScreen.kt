@@ -8,6 +8,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -49,6 +52,7 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun StudyCompanionScreen(
     repository: FioRepository,
@@ -93,6 +97,9 @@ fun StudyCompanionScreen(
 
     // Long-press target for the "remove document" confirmation
     var docPendingRemoval by remember { mutableStateOf<StudyDocument?>(null) }
+
+    // Subject pending removal (Study / Leisure / Research tabs)
+    var coursePendingRemoval by remember { mutableStateOf<CourseSection?>(null) }
 
     // Document Picker State
     var targetCourseIdForImport by remember { mutableStateOf("") }
@@ -254,6 +261,35 @@ fun StudyCompanionScreen(
             },
             dismissButton = {
                 TextButton(onClick = { docPendingRemoval = null }) {
+                    Text("Cancel", color = colors.textMuted)
+                }
+            }
+        )
+    }
+
+    // Confirmation: remove a whole subject from its section tab.
+    coursePendingRemoval?.let { course ->
+        AlertDialog(
+            onDismissRequest = { coursePendingRemoval = null },
+            containerColor = colors.surface,
+            title = { Text("Remove subject?", color = colors.textPrimary) },
+            text = {
+                Text(
+                    text = "Removing \u201c${course.name}\u201d will also permanently delete all chat messages, flashcards and imported documents under this subject. This cannot be undone.",
+                    color = colors.textSecondary
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    repository.deleteCourse(course.id)
+                    if (selectedCourseId == course.id) selectedCourseId = ""
+                    coursePendingRemoval = null
+                }) {
+                    Text("Remove", color = colors.error, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { coursePendingRemoval = null }) {
                     Text("Cancel", color = colors.textMuted)
                 }
             }
@@ -504,7 +540,10 @@ fun StudyCompanionScreen(
                 }
             } else {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(top = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     sectionCourses.forEach { c ->
@@ -514,15 +553,32 @@ fun StudyCompanionScreen(
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(if (isSelected) colors.primaryContainer else colors.surface)
                                 .border(1.dp, if (isSelected) colors.primary else colors.border, RoundedCornerShape(12.dp))
-                                .clickable { selectedCourseId = c.id }
-                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                                .combinedClickable(
+                                    onClick = { selectedCourseId = c.id },
+                                    onLongClick = { coursePendingRemoval = c }
+                                )
+                                .padding(start = 12.dp, end = if (isSelected) 6.dp else 12.dp, top = 8.dp, bottom = 8.dp)
                         ) {
-                            Text(
-                                text = c.name,
-                                color = if (isSelected) colors.primary else colors.textSecondary,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = c.name,
+                                    color = if (isSelected) colors.primary else colors.textSecondary,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                if (isSelected) {
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    // Remove this subject from the section.
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Remove ${c.name}",
+                                        tint = colors.error,
+                                        modifier = Modifier
+                                            .size(15.dp)
+                                            .clickable { coursePendingRemoval = c }
+                                    )
+                                }
+                            }
                         }
                     }
                 }

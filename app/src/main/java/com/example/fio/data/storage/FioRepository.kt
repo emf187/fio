@@ -607,6 +607,34 @@ class FioRepository(private val context: Context) {
         return course
     }
 
+    /**
+     * Removes a subject (Study / Leisure / Research) and everything that belongs
+     * to it: its documents plus stored originals/previews, flashcards, tutor
+     * sessions and chat history. Irreversible — the UI asks for confirmation.
+     */
+    fun deleteCourse(courseId: String) {
+        val docIds = _documents.value.filter { it.courseId == courseId }.map { it.id }
+        _courses.value = _courses.value.filterNot { it.id == courseId }
+        _documents.value = _documents.value.filterNot { it.courseId == courseId }
+        _flashcards.value = _flashcards.value.filterNot { it.courseId == courseId }
+        _tutorSessions.value = _tutorSessions.value.filterNot { it.courseId == courseId }
+        _chatHistory.value = _chatHistory.value.filterNot { it.courseId == courseId }
+        ioExecutor.execute {
+            docIds.forEach { docId ->
+                deleteContentFile(docId)
+                runCatching {
+                    File(context.filesDir, "fio_doc_files").listFiles()?.forEach { f ->
+                        if (f.name.startsWith("$docId.")) f.delete()
+                    }
+                    File(context.filesDir, "fio_reader_text").listFiles()?.forEach { f ->
+                        if (f.name.startsWith("$docId.")) f.delete()
+                    }
+                }
+            }
+        }
+        saveAll()
+    }
+
     fun addDocument(document: StudyDocument) {
         _documents.value = _documents.value + document
         if (document.content.isNotBlank()) {
