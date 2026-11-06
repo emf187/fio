@@ -96,6 +96,30 @@ object CasioEngine {
         return parser.run()
     }
 
+    /**
+     * Appends incoming tokens to the current expression, merging digit keys
+     * into one running number (pressing 1 then 2 must be "12", not 1×2) and
+     * ignoring a second decimal point inside the same number, like hardware.
+     */
+    fun appendTokens(current: List<Tok>, incoming: List<Tok>): List<Tok> {
+        val out = ArrayList<Tok>(current.size + incoming.size)
+        out.addAll(current)
+        for (t in incoming) {
+            val last = out.lastOrNull()
+            if (t is Tok.Num && last is Tok.Num) {
+                if (t.text == ".") {
+                    if (!last.text.contains('.')) out[out.lastIndex] = Tok.Num(last.text + ".")
+                    // a second dot inside the same number is a dead key — ignore
+                } else {
+                    out[out.lastIndex] = Tok.Num(last.text + t.text)
+                }
+            } else {
+                out.add(t)
+            }
+        }
+        return out
+    }
+
     private fun sourcesEmpty(tokens: List<Tok>): Boolean {
         if (tokens.isEmpty()) return true
         // A lone Ans key (e.g. after AC) is a valid quick recall.

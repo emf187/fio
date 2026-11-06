@@ -41,6 +41,40 @@ class CasioEngineTest {
     }
 
     @Test
+    fun digitKeysBuildRunningNumbers() {
+        // Digits typed one key at a time must build ONE number ("12" = 12,
+        // never 1×2) — regression test for the press-replacing bug.
+        var e = CasioEngine.appendTokens(emptyList(), Toks(num("1")))
+        e = CasioEngine.appendTokens(e, Toks(num("2")))
+        e = CasioEngine.appendTokens(e, Toks(num("3")))
+        expect(e, "123")
+        // "123+34" typed digit-wise → 157
+        e = CasioEngine.appendTokens(e, Toks(op('+')))
+        e = CasioEngine.appendTokens(e, Toks(num("3")))
+        e = CasioEngine.appendTokens(e, Toks(num("4")))
+        expect(e, "157")
+        // Also verify the merged token evaluates exactly like its typed text.
+        expect(e, CasioEngine.evaluate(Toks(num("123"), op('+'), num("34")), deg, null).display)
+    }
+
+    @Test
+    fun decimalTyping() {
+        // 0.5 typed key by key
+        var e = CasioEngine.appendTokens(emptyList(), Toks(num("0")))
+        e = CasioEngine.appendTokens(e, Toks(num(".")))
+        e = CasioEngine.appendTokens(e, Toks(num("5")))
+        expect(e, "0.5")
+        // leading dot alone, then digits: ".5" evaluates like the hardware
+        var d = CasioEngine.appendTokens(emptyList(), Toks(num(".")))
+        d = CasioEngine.appendTokens(d, Toks(num("5")))
+        expect(d, "0.5")
+        // a second dot inside the same number is a dead key: ".57"
+        d = CasioEngine.appendTokens(d, Toks(num(".")))
+        d = CasioEngine.appendTokens(d, Toks(num("7")))
+        expect(d, "0.57")
+    }
+
+    @Test
     fun degreesTrig() {
         expect(Toks(fx("sin"), open, num("30"), close), "0.5")
         expect(Toks(fx("cos"), open, num("60"), close), "0.5")

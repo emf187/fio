@@ -53,7 +53,7 @@ fun FioMarkdown(
     modifier: Modifier = Modifier,
     colors: FioCustomColors = LocalFioColors.current
 ) {
-    val blocks = remember(text) { parseBlocks(text.lines()) }
+    val blocks = remember(text) { parseBlocks(joinDisplayMath(text.lines())) }
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         blocks.forEach { block -> BlockView(block, colors, baseFontSize) }
     }
@@ -78,6 +78,41 @@ private val HEADING_REGEX = Regex("""^\s*(#{1,6})\s+(.*)$""")
 private val QUOTE_REGEX = Regex("""^\s*>\s?(.*)$""")
 private val TABLE_ROW_REGEX = Regex("""^\s*\|.*\|\s*$""")
 private val TABLE_SEP_REGEX = Regex("""^\s*\|(\s*:?-{2,}:?\s*\|)+\s*$""")
+
+/**
+ * AI models write display math as `$$` on its own line with the equation on
+ * following lines. The line-based block parser would then render each lone
+ * `$$` literally (dollar signs around answers), so re-join every multi-line
+ * `$$…$$` block into one line before parsing.
+ */
+private fun joinDisplayMath(all: List<String>): List<String> {
+    val out = mutableListOf<String>()
+    var open = false
+    val body = StringBuilder()
+    for (raw in all) {
+        val t = raw.trim()
+        if (!open) {
+            if (t.startsWith("$$") && !t.removePrefix("$$").contains("$$")) {
+                open = true
+                body.setLength(0)
+                body.append(t.removePrefix("$$").trim())
+            } else {
+                out += raw
+            }
+        } else {
+            val end = t.indexOf("$$")
+            if (end >= 0) {
+                if (t.substring(0, end).isNotBlank()) body.append(' ').append(t.substring(0, end).trim())
+                out += "$$ $body $$".trim()
+                open = false
+            } else if (t.isNotBlank()) {
+                body.append(' ').append(t)
+            }
+        }
+    }
+    if (open) out += "$$ $body $$".trim() // half-streamed block: show content
+    return out
+}
 
 private fun parseBlocks(all: List<String>): List<Block> {
     val blocks = mutableListOf<Block>()

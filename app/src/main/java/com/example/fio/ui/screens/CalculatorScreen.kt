@@ -78,13 +78,14 @@ fun CalculatorScreen() {
             is CasioEngine.Tok.Open -> true
             else -> false
         }
-        val builder = if (hadResult && !startsFresh) {
-            mutableListOf<CasioEngine.Tok>(CasioEngine.Tok.Ans)
-        } else {
-            mutableListOf()
+        val base: List<CasioEngine.Tok> = when {
+            hadResult && startsFresh -> emptyList()
+            hadResult -> listOf(CasioEngine.Tok.Ans)
+            else -> expr
         }
-        builder.addAll(tokens)
-        expr = builder
+        // appendTokens keeps the running expression and merges digit keys,
+        // so typed numbers stay whole and functions render as you type.
+        expr = CasioEngine.appendTokens(base, tokens)
         resultText = null
         errorText = null
         historyIndex = -1

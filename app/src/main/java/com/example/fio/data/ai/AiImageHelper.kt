@@ -67,7 +67,12 @@ object AiImageHelper {
         "Related-image rule: when the answer is about an abstract concept, object, machine, organism, " +
             "map, structure or diagram that a picture would genuinely clarify, END your reply with " +
             "exactly one line of the form [IMG: 2-4 word image search query]. " +
-            "Do not add it for definitions, calculations, advice, list steps or anything purely textual. " +
+            "The query must name the concrete subject of the question " +
+            "(for a question about the human heart write [IMG: human heart anatomy]; " +
+            "for the water cycle write [IMG: water cycle diagram]). " +
+            "Never use a school subject alone such as math, chemistry, physics or history " +
+            "as the query, and never search for a formula or calculation. " +
+            "Do not add the marker for definitions, calculations, advice, list steps or anything purely textual. " +
             "Never more than one marker. "
 
     /**
@@ -85,9 +90,18 @@ object AiImageHelper {
         val combined = (urlCandidates + wikimedia(q)).filter { it.second.isNotBlank() }
         val saved = mutableListOf<AiImage>()
         val seen = HashSet<String>()
+        // Drop results whose title shares nothing with the query — keeps
+        // generic drift (unrelated stock images) out of the answer.
+        val qWords = q.lowercase().split(Regex("[^a-z0-9]+")).filter { it.length >= 3 }.toSet()
         for ((title, imageUrl) in combined) {
             if (saved.size >= count) break
             if (!seen.add(imageUrl)) continue
+            if (qWords.isNotEmpty()) {
+                val tWords = title.lowercase().split(Regex("[^a-z0-9]+")).toSet()
+                val relevant = tWords.any { it in qWords } ||
+                    qWords.any { w -> tWords.any { it.startsWith(w) } }
+                if (!relevant) continue
+            }
             val key = md5(q + "|" + imageUrl)
             val path = downloadAndStore(context, imageUrl, "ai_$key.jpg")
             if (path != null) saved.add(AiImage(path, imageUrl, title))
