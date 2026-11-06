@@ -7,6 +7,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -21,7 +24,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
@@ -32,6 +39,9 @@ import com.example.fio.data.storage.ImageStorage
 import com.example.fio.ui.components.FioBadge
 import com.example.fio.ui.components.FioCard
 import com.example.fio.ui.components.FioDivider
+import com.example.fio.ui.components.buildMarkdownAnnotated
+import com.example.fio.ui.components.markdownVisualTransformation
+import com.example.fio.ui.components.stripMarkdownMarkers
 import com.example.fio.ui.theme.LocalFioColors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -110,6 +120,18 @@ fun NotesScreen(repository: FioRepository) {
 
     if (editingNote != null) {
         val note = editingNote!!
+        // TextFieldValue drives the body editor so the toolbar can format the current selection.
+        var contentValue by remember(note.id) { mutableStateOf(TextFieldValue(note.content)) }
+
+        fun commitContentChange(update: TextFieldValue = contentValue) {
+            contentValue = update
+            // Automatically parse #tags
+            val extractedTags = Regex("#([a-zA-Z0-9_-]+)").findAll(update.text).map { it.groupValues[1] }.toList()
+            val updated = note.copy(content = update.text, tags = extractedTags)
+            editingNote = updated
+            queueNoteSave(updated)
+        }
+
         // --- Full Screen Obsidian Markdown Editor ---
         Column(
             modifier = Modifier
@@ -192,18 +214,52 @@ fun NotesScreen(repository: FioRepository) {
             FioDivider(modifier = Modifier.padding(vertical = 6.dp))
 
             if (!isPreviewMode) {
-                // Markdown Raw Editor
+                // --- Formatting Toolbar ---
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    FormatChip(label = "B", tag = "md_format_bold", fontWeight = FontWeight.Bold) {
+                        commitContentChange(applyMarkdownMarkers(contentValue, "**", "**"))
+                    }
+                    FormatChip(label = "I", tag = "md_format_italic", fontStyle = FontStyle.Italic) {
+                        commitContentChange(applyMarkdownMarkers(contentValue, "*", "*"))
+                    }
+                    FormatChip(label = "U", tag = "md_format_underline", textDecoration = TextDecoration.Underline) {
+                        commitContentChange(applyMarkdownMarkers(contentValue, "__", "__"))
+                    }
+                    FormatChip(label = "S", tag = "md_format_strike", textDecoration = TextDecoration.LineThrough) {
+                        commitContentChange(applyMarkdownMarkers(contentValue, "~~", "~~"))
+                    }
+                    FormatChip(label = "•", tag = "md_format_bullet") {
+                        commitContentChange(applyMarkdownListPrefix(contentValue, "- "))
+                    }
+                    FormatChip(label = "✓", tag = "md_format_check") {
+                        commitContentChange(applyMarkdownListPrefix(contentValue, "- [ ] "))
+                    }
+                    FormatChip(label = "H", tag = "md_format_heading") {
+                        commitContentChange(applyMarkdownListPrefix(contentValue, "# ", firstLineOnly = true))
+                    }
+                    FormatChip(label = "[[]]", tag = "md_format_wikilink") {
+                        commitContentChange(applyMarkdownMarkers(contentValue, "[[", "]]"))
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // Markdown editor: bounded height (scrolls with the caret) and live styled markers.
                 OutlinedTextField(
-                    value = note.content,
-                    onValueChange = { newContent ->
-                        // Automatically parse #tags
-                        val extractedTags = Regex("#([a-zA-Z0-9_-]+)").findAll(newContent).map { it.groupValues[1] }.toList()
-                        val updated = note.copy(content = newContent, tags = extractedTags)
-                        editingNote = updated
-                        queueNoteSave(updated)
-                    },
+                    value = contentValue,
+                    onValueChange = { update -> commitContentChange(update) },
+                    visualTransformation = markdownVisualTransformation(colors.textPrimary),
                     placeholder = { Text("Write in Markdown...\nUse [[links]] to connect notes\nUse #tags to organize\nUse **bold** and # headers", color = colors.textMuted) },
-                    modifier = Modifier.fillMaxSize().testTag("note_content_editor"),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                        .testTag("note_content_editor"),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = Color.Transparent,
                         unfocusedBorderColor = Color.Transparent,
@@ -244,7 +300,7 @@ fun NotesScreen(repository: FioRepository) {
                                 if (match != null) {
                                     val linkedTitle = match.groupValues[1]
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(line.substring(0, match.range.first), color = colors.textPrimary, fontSize = 13.sp)
+                                        Text(buildMarkdownAnnotated(line.substring(0, match.range.first), colors.textPrimary), color = colors.textPrimary, fontSize = 13.sp)
                                         Box(
                                             modifier = Modifier
                                                 .clip(RoundedCornerShape(10.dp))
@@ -268,10 +324,10 @@ fun NotesScreen(repository: FioRepository) {
                                         ) {
                                             Text("[[$linkedTitle]]", color = colors.primary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                         }
-                                        Text(line.substring(match.range.last + 1), color = colors.textPrimary, fontSize = 13.sp)
+                                        Text(buildMarkdownAnnotated(line.substring(match.range.last + 1), colors.textPrimary), color = colors.textPrimary, fontSize = 13.sp)
                                     }
                                 } else {
-                                    Text(line, color = colors.textPrimary, fontSize = 13.sp, lineHeight = 18.sp)
+                                    Text(buildMarkdownAnnotated(line, colors.textPrimary), color = colors.textPrimary, fontSize = 13.sp, lineHeight = 18.sp)
                                 }
                             }
                         }
@@ -399,7 +455,7 @@ fun NotesScreen(repository: FioRepository) {
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = noteItem.content.take(120).replace("\n", " "),
+                        text = stripMarkdownMarkers(noteItem.content).take(120).replace("\n", " "),
                         color = colors.textSecondary,
                         fontSize = 11.sp,
                         maxLines = 2
@@ -416,5 +472,78 @@ fun NotesScreen(repository: FioRepository) {
                 }
             }
         }
+    }
+}
+
+// --- Markdown editing helpers -------------------------------------------------
+
+/** Wraps the selection (or inserts an empty pair at the caret) with Markdown markers; unwraps when already wrapped. */
+private fun applyMarkdownMarkers(value: TextFieldValue, open: String, close: String): TextFieldValue {
+    val text = value.text
+    val selStart = minOf(value.selection.start, value.selection.end).coerceIn(0, text.length)
+    val selEnd = maxOf(value.selection.start, value.selection.end).coerceIn(0, text.length)
+    if (selStart == selEnd) {
+        val newText = text.substring(0, selStart) + open + close + text.substring(selEnd)
+        return TextFieldValue(newText, TextRange(selStart + open.length))
+    }
+    val isWrapped = selStart >= open.length && selEnd + close.length <= text.length &&
+            text.regionMatches(selStart - open.length, open, 0, open.length) &&
+            text.regionMatches(selEnd, close, 0, close.length)
+    return if (isWrapped) {
+        val newText = text.removeRange(selStart - open.length, selEnd + close.length)
+        TextFieldValue(newText, TextRange(selStart - open.length, selEnd - open.length))
+    } else {
+        val newText = text.substring(0, selStart) + open + text.substring(selStart, selEnd) + close + text.substring(selEnd)
+        TextFieldValue(newText, TextRange(selStart + open.length, selEnd + open.length))
+    }
+}
+
+/** Prefixes the lines covered by the selection with [prefix] (first line only when [firstLineOnly]). */
+private fun applyMarkdownListPrefix(value: TextFieldValue, prefix: String, firstLineOnly: Boolean = false): TextFieldValue {
+    val text = value.text
+    val selStart = minOf(value.selection.start, value.selection.end).coerceIn(0, text.length)
+    val selEnd = maxOf(value.selection.start, value.selection.end).coerceIn(0, text.length)
+    val blockStart = text.lastIndexOf('\n', (selStart - 1).coerceAtLeast(0)) + 1
+    val blockEnd = text.indexOf('\n', (selEnd - 1).coerceAtLeast(0)).let { if (it == -1) text.length else it }
+    val block = text.substring(blockStart, blockEnd)
+    val lines = block.split('\n')
+    val styled = when {
+        firstLineOnly -> lines.mapIndexed { index, line -> if (index == 0 && line.isNotBlank()) prefix + line else line }
+        else -> lines.map { line -> if (line.isBlank()) line else prefix + line }
+    }.joinToString("\n")
+    val newText = text.substring(0, blockStart) + styled + text.substring(blockEnd)
+    // Park the caret just after the first prefixed line so typing continues inside the list/heading.
+    val caret = minOf(blockStart + prefix.length, newText.length)
+    return TextFieldValue(newText, TextRange(caret))
+}
+
+@Composable
+private fun FormatChip(
+    label: String,
+    tag: String,
+    fontWeight: FontWeight? = null,
+    fontStyle: FontStyle? = null,
+    textDecoration: TextDecoration? = null,
+    fontSize: Int = 13,
+    onClick: () -> Unit
+) {
+    val colors = LocalFioColors.current
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(colors.surfaceElevated)
+            .border(1.dp, colors.border, RoundedCornerShape(8.dp))
+            .clickable { onClick() }
+            .padding(horizontal = 10.dp, vertical = 5.dp)
+            .testTag(tag)
+    ) {
+        Text(
+            text = label,
+            color = colors.textPrimary,
+            fontSize = fontSize.sp,
+            fontWeight = fontWeight,
+            fontStyle = fontStyle,
+            textDecoration = textDecoration
+        )
     }
 }

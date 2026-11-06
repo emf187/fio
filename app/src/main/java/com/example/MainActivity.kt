@@ -208,6 +208,7 @@ fun FioAppContent(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
+                    .imePadding()
                     .background(colors.background)
             ) {
                 when (currentScreen) {
