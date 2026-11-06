@@ -231,6 +231,7 @@ fun FioAppContent(
                         repository = repository,
                         aiClient = aiClient
                     )
+                    FioScreen.CALCULATOR -> CalculatorScreen()
                     FioScreen.TIMER -> TimerLockdownScreen(
                         repository = repository
                     )

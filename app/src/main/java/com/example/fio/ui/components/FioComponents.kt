@@ -34,6 +34,7 @@ enum class FioScreen(val title: String, val icon: ImageVector) {
     TIMETABLE("Timetable", Icons.Default.Schedule),
     STUDY("Study Companion", Icons.AutoMirrored.Filled.MenuBook),
     TUTOR("Tutor & Practice", Icons.Default.School),
+    CALCULATOR("Calculator", Icons.Default.Calculate),
     TIMER("Timer & Lockdown", Icons.Default.Timer),
     NOTES("Notes & Links", Icons.Default.EditNote),
     GALLERY("Gallery", Icons.Default.Collections),
@@ -218,6 +219,7 @@ fun FioSidebarDrawer(
 
                 NavItem(FioScreen.STUDY, currentScreen, onSelectScreen, onClose)
                 NavItem(FioScreen.TUTOR, currentScreen, onSelectScreen, onClose)
+                NavItem(FioScreen.CALCULATOR, currentScreen, onSelectScreen, onClose)
                 NavItem(FioScreen.NOTES, currentScreen, onSelectScreen, onClose)
                 NavItem(FioScreen.GALLERY, currentScreen, onSelectScreen, onClose)
 
