@@ -14,6 +14,47 @@ import kotlin.math.max
 
 object ImageStorage {
     /**
+     * Saves an already-downloaded image (Wingman/Tutor related pictures) to
+     * internal storage, scaled to a memory-friendly size. Downloads are cached:
+     * the same [fileName] reuses the stored copy.
+     * Returns the stored file path, or null on failure.
+     */
+    suspend fun storeRemoteImage(context: Context, bytes: ByteArray, fileName: String): String? = withContext(Dispatchers.IO) {
+        try {
+            val dir = File(context.filesDir, "fio_images")
+            if (!dir.exists()) dir.mkdirs()
+            val target = File(dir, fileName)
+            if (target.exists() && target.length() > 0L) return@withContext target.absolutePath
+
+            val original = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return@withContext null
+            val maxDimension = 1024
+            val scale = if (original.width > maxDimension || original.height > maxDimension) {
+                maxDimension.toFloat() / max(original.width, original.height)
+            } else 1.0f
+            val scaled = if (scale < 1.0f) {
+                Bitmap.createScaledBitmap(
+                    original,
+                    (original.width * scale).toInt(),
+                    (original.height * scale).toInt(),
+                    true
+                )
+            } else original
+
+            val outputStream = FileOutputStream(target)
+            scaled.compress(Bitmap.CompressFormat.JPEG, 82, outputStream)
+            outputStream.flush()
+            outputStream.close()
+
+            if (scaled !== original) scaled.recycle()
+            original.recycle()
+            target.absolutePath
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    /**
      * Downscales, compresses, and saves an image Uri to internal storage.
      * Returns a pair of:
      * - localFilePath: String (stored persistent path)

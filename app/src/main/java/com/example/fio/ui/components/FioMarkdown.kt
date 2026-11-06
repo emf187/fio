@@ -5,11 +5,12 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,12 +21,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.BaselineShift
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -39,11 +36,15 @@ import com.example.fio.ui.theme.LocalFioColors
  * Trims to the essentials so streaming re-renders stay cheap on weak hardware:
  * headings, bold/italic/strikethrough, inline code, fenced code blocks, bullet
  * and numbered lists, blockquotes, horizontal rules and simple pipe tables.
- * Math in $…$ / $$…$$ is rendered as actual characters (Greek letters, ∫, ×,
- * raised exponents) instead of raw LaTeX commands. Unterminated markdown
- * (mid-stream `**`, open fences) is shown as literal text, never flicker.
  *
- * Pure function of `text`: recompose only happens when the message grows.
+ * Math (LaTeX) is rendered as real typography anywhere in the reply — wrapped
+ * in $…$ or written raw. `frac((a+b),(c))`-style commands become actual stacked
+ * fractions (paragraph split into FlowRow segments; see MathRenderer.kt);
+ * Greek letters, ∫, ×, superscripts etc. become real characters.
+ * Unterminated markdown (mid-stream `**`, open fences) shows as literal text,
+ * never flicker.
+ *
+ * Pure function of `text`: recomposition only happens when the message grows.
  */
 @Composable
 fun FioMarkdown(
@@ -186,23 +187,77 @@ private fun splitTableRow(line: String): List<String> =
 
 private val headingSize = mapOf(1 to 17.sp, 2 to 16.sp, 3 to 15.sp, 4 to 14.sp, 5 to 14.sp, 6 to 13.sp)
 
+/**
+ * One line of rich text (markdown + math). Paragraphs containing stacked
+ * fractions render as FlowRow segments (text runs + fraction slots); plain
+ * ones render through a single Text.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun RichLine(
+    source: String,
+    colors: FioCustomColors,
+    base: TextUnit,
+    modifier: Modifier = Modifier,
+    fontWeight: FontWeight? = null,
+    lineHeight: TextUnit? = null
+) {
+    if (hasStackedFraction(source)) {
+        val segments = remember(source, colors) { buildMathSegments(source, colors) }
+        FlowRow(
+            modifier = modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            segments.forEach { segment ->
+                when (segment) {
+                    is MathSegment.Math -> Text(
+                        text = segment.text,
+                        color = colors.textPrimary,
+                        fontSize = base,
+                        fontWeight = fontWeight,
+                        lineHeight = lineHeight ?: TextUnit.Unspecified,
+                        modifier = Modifier.align(Alignment.CenterVertically)
+                    )
+                    is MathSegment.Frac -> FractionView(
+                        num = segment.num,
+                        den = segment.den,
+                        colors = colors,
+                        base = base,
+                        modifier = Modifier.align(Alignment.CenterVertically)
+                    )
+                }
+            }
+        }
+    } else {
+        val annotated = remember(source, colors) { buildFullLinear(source, colors) }
+        Text(
+            text = annotated,
+            color = colors.textPrimary,
+            fontSize = base,
+            fontWeight = fontWeight,
+            lineHeight = lineHeight ?: TextUnit.Unspecified,
+            modifier = modifier
+        )
+    }
+}
+
 @Composable
 private fun BlockView(block: Block, colors: FioCustomColors, base: TextUnit) {
     when (block) {
-        is Block.Paragraph -> Text(
-            text = remember(block.lines) { inlineAnnotated(block.lines.joinToString(" "), colors) },
-            color = colors.textPrimary,
-            fontSize = base
+        is Block.Paragraph -> RichLine(
+            source = block.lines.joinToString(" "),
+            colors = colors,
+            base = base
         )
         is Block.Heading -> {
-            // Heading text: strip inline marks, render bold so hierarchy is obvious.
-            Text(
-                text = block.text.replace("**", "").replace("`", ""),
-                color = colors.textPrimary,
-                fontSize = headingSize[minOf(block.level, 6)] ?: base,
+            val headingText = block.text.replace("**", "").replace("`", "")
+            RichLine(
+                source = headingText,
+                colors = colors,
+                base = headingSize[minOf(block.level, 6)] ?: base,
                 fontWeight = when (block.level) {
-                    1, 2 -> FontWeight.SemiBold
-                    3, 4 -> FontWeight.SemiBold
+                    1, 2, 3, 4 -> FontWeight.SemiBold
                     else -> FontWeight.Medium
                 }
             )
@@ -249,26 +304,27 @@ private fun BlockView(block: Block, colors: FioCustomColors, base: TextUnit) {
             ) {
                 block.lines.forEach { quoteLine ->
                     Text(
-                        text = inlineAnnotated(quoteLine, colors),
+                        text = quoteLine,
                         color = colors.textSecondary,
                         fontSize = base
                     )
                 }
             }
         }
-        is Block.ListItem -> Row(modifier = Modifier.fillMaxWidth()) {
-            Text(
-                text = block.ordinal ?: "•",
-                color = colors.textSecondary,
-                fontSize = base
-            )
-            Box(modifier = Modifier.width(if (block.ordinal == null) 6.dp else 4.dp))
-            Text(
-                text = remember(block.text) { inlineAnnotated(block.text, colors) },
-                color = colors.textPrimary,
-                fontSize = base,
-                modifier = Modifier.weight(1f)
-            )
+        is Block.ListItem -> {
+            val marker = block.ordinal ?: "•"
+            val indent = if (block.ordinal == null) 8.dp else (marker.length + 1).dp
+            Row(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = marker,
+                    color = colors.textSecondary,
+                    fontSize = base
+                )
+                Box(modifier = Modifier.width(indent))
+                Box(modifier = Modifier.weight(1f)) {
+                    RichLine(source = block.text, colors = colors, base = base)
+                }
+            }
         }
         is Block.HRule -> {
             Divider(color = colors.border)
@@ -314,200 +370,4 @@ private fun TableView(table: Block.Table, colors: FioCustomColors, base: TextUni
             if (index < table.rows.lastIndex) Divider(color = colors.border)
         }
     }
-}
-
-// -------------------------------------------------------- inline parser
-
-/**
- * Parses **bold**, *italic*, ~~strike~~ and `code` into spans. Anything
- * unterminated (mid-stream `**`) survives as literal characters, so streaming
- * output never flickers between styled/unstyled states.
- */
-private fun inlineAnnotated(source: String, colors: FioCustomColors): AnnotatedString =
-    buildAnnotatedString {
-        append("")
-        var i = 0
-        while (i < source.length) {
-            val c = source[i]
-            when {
-                c == '`' -> {
-                    val close = source.indexOf('`', i + 1)
-                    if (close > i) {
-                        pushStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = colors.surfaceElevated))
-                        append(source.substring(i + 1, close))
-                        pop()
-                        i = close + 1
-                    } else {
-                        append(c); i++
-                    }
-                }
-                c == '*' || c == '~' || c == '_' -> {
-                    val marker = when {
-                        c == '~' && source.startsWith("~~", i) -> "~~"
-                        c == '*' && source.startsWith("***", i) -> "***"
-                        c == '*' && source.startsWith("**", i) -> "**"
-                        else -> c.toString()
-                    }
-                    val close = findInlineClose(source, i + marker.length, marker)
-                    if (close > i) {
-                        val content = source.substring(i + marker.length, close)
-                        when (marker) {
-                            "**" -> pushStyle(SpanStyle(fontWeight = FontWeight.SemiBold))
-                            "***" -> pushStyle(
-                                SpanStyle(
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
-                                )
-                            )
-                            "~~" -> pushStyle(SpanStyle(textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough))
-                            else -> pushStyle(SpanStyle(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic))
-                        }
-                        append(content)
-                        pop()
-                        i = close + marker.length
-                    } else {
-                        append(source.substring(i, i + marker.length))
-                        i += marker.length
-                    }
-                }
-                c == '$' -> {
-                    // Math: render as actual characters — Greek letters (∑, ∫,
-                    // α…Ω), ×/·/≤ operators, and superscripts/subscripts as
-                    // raised/lowered spans. Streamed LaTeX that later completes
-                    // simply re-renders once more glyphs resolve; unmatched $
-                    // survives as literal text so nothing flickers or crashes.
-                    if (source.startsWith("$$", i)) {
-                        val close = source.indexOf("$$", i + 2)
-                        if (close > i) {
-                            append(mathAnnotated(source.substring(i + 2, close), colors))
-                            i = close + 2
-                        } else {
-                            append(source.substring(i, i + 2)); i += 2
-                        }
-                    } else {
-                        val close = source.indexOf('$', i + 1)
-                        if (close > i) {
-                            append(mathAnnotated(source.substring(i + 1, close), colors))
-                            i = close + 1
-                        } else {
-                            append(c); i++
-                        }
-                    }
-                }
-                else -> {
-                    append(c)
-                    i++
-                }
-            }
-        }
-    }
-
-/**
- * Renders inline math ($…$ / $$…$$) as real characters: LaTeX commands become
- * Unicode symbols (α, Σ, ∫, ×, ≤, →, ∞ …), \frac{a}{b} and \sqrt{x} become
- * a/b and √(x), and ^{…} / _{…} become raised/lowered spans. If a command is
- * unknown it stays as readable plain text — math never disappears.
- */
-private fun mathAnnotated(expr: String, colors: FioCustomColors): AnnotatedString =
-    buildAnnotatedString {
-        var symbols = expr
-        symbols = FRACTION_REGEX.replace(symbols) { m -> "(${m.groupValues[1]})/(${m.groupValues[2]})" }
-        symbols = SQRT_REGEX.replace(symbols) { m -> "√(${m.groupValues[1]})" }
-        for ((cmd, glyph) in LATEX_SYMBOLS) symbols = symbols.replace(cmd, glyph)
-
-        var i = 0
-        while (i < symbols.length) {
-            val c = symbols[i]
-            if (c == '^' || c == '_') {
-                val group = scriptGroupAfter(symbols, i + 1)
-                if (group != null) {
-                    pushStyle(
-                        SpanStyle(
-                            baselineShift = if (c == '^') BaselineShift.Superscript else BaselineShift.Subscript
-                        )
-                    )
-                    append(group.first)
-                    pop()
-                    i = group.second
-                    continue
-                }
-            }
-            append(c)
-            i++
-        }
-    }
-
-/** 1-based content after ^/_ : either a braced group or a single script char. */
-private fun scriptGroupAfter(source: String, start: Int): Pair<String, Int>? {
-    if (start >= source.length) return null
-    if (source[start] == '{') {
-        var depth = 1
-        var j = start + 1
-        while (j < source.length) {
-            when (source[j]) {
-                '{' -> depth++
-                '}' -> {
-                    depth--
-                    if (depth == 0) {
-                        val content = source.substring(start + 1, j)
-                        return content to (j + 1)
-                    }
-                }
-            }
-            j++
-        }
-        return null
-    }
-    val c = source[start]
-    if (c == '\\' || c.isLetterOrDigit()) return c.toString() to (start + 1)
-    return null
-}
-
-private val FRACTION_REGEX = Regex("""\\frac\{([^{}]*)\}\{([^{}]*)\}""")
-private val SQRT_REGEX = Regex("""\\sqrt\{([^{}]*)\}""")
-
-/** Longest-first so \rightarrow wins over \right, \int wins over \in, etc. */
-private val LATEX_SYMBOLS: List<Pair<String, String>> = listOf(
-    "\\alpha" to "α", "\\beta" to "β", "\\gamma" to "γ", "\\delta" to "δ",
-    "\\epsilon" to "ε", "\\varepsilon" to "ε", "\\zeta" to "ζ", "\\eta" to "η",
-    "\\theta" to "θ", "\\vartheta" to "ϑ", "\\iota" to "ι", "\\kappa" to "κ",
-    "\\lambda" to "λ", "\\mu" to "μ", "\\nu" to "ν", "\\xi" to "ξ", "\\omicron" to "ο",
-    "\\pi" to "π", "\\varpi" to "ϖ", "\\rho" to "ρ", "\\varrho" to "ϱ", "\\sigma" to "σ",
-    "\\varsigma" to "ς", "\\tau" to "τ", "\\upsilon" to "υ", "\\phi" to "φ",
-    "\\varphi" to "ϕ", "\\chi" to "χ", "\\psi" to "ψ", "\\omega" to "ω",
-    "\\Gamma" to "Γ", "\\Delta" to "Δ", "\\Theta" to "Θ", "\\Lambda" to "Λ",
-    "\\Xi" to "Ξ", "\\Pi" to "Π", "\\Sigma" to "Σ", "\\Upsilon" to "Υ", "\\Phi" to "Φ",
-    "\\Psi" to "Ψ", "\\Omega" to "Ω",
-    "\\sum" to "∑", "\\prod" to "∏", "\\coprod" to "∐", "\\int" to "∫", "\\oint" to "∮",
-    "\\partial" to "∂", "\\nabla" to "∇", "\\infty" to "∞", "\\hbar" to "ℏ",
-    "\\pm" to "±", "\\mp" to "∓", "\\cdot" to "·", "\\times" to "×", "\\div" to "÷",
-    "\\star" to "⋆", "\\circ" to "∘", "\\odot" to "⊙", "\\oplus" to "⊕", "\\ominus" to "⊖",
-    "\\leq" to "≤", "\\le" to "≤", "\\geq" to "≥", "\\ge" to "≥", "\\neq" to "≠",
-    "\\ne" to "≠", "\\approx" to "≈", "\\equiv" to "≡", "\\sim" to "∼", "\\simeq" to "≃",
-    "\\cong" to "≅", "\\propto" to "∝",
-    "\\Rightarrow" to "⇒", "\\rightarrow" to "→", "\\leftrightarrow" to "↔",
-    "\\leftarrow" to "←", "\\downarrow" to "↓", "\\uparrow" to "↑", "\\mapsto" to "↦",
-    "\\in" to "∈", "\\notin" to "∉", "\\ni" to "∋", "\\subset" to "⊂", "\\supset" to "⊃",
-    "\\subseteq" to "⊆", "\\supseteq" to "⊇", "\\cup" to "∪", "\\cap" to "∩",
-    "\\emptyset" to "∅", "\\varnothing" to "∅", "\\forall" to "∀", "\\exists" to "∃",
-    "\\angle" to "∠", "\\perp" to "⊥", "\\parallel" to "∥", "\\degree" to "°", "\\prime" to "′",
-    "\\Re" to "ℜ", "\\Im" to "ℑ", "\\aleph" to "ℵ",
-    "\\left" to "", "\\right" to "", "\\displaystyle" to "", "\\textstyle" to "",
-    "\\big" to "", "\\Big" to "", "\\bigg" to "", "\\Bigg" to "",
-    "\\text" to "", "\\mathrm" to "", "\\mathbf" to "", "\\mathcal" to "", "\\mathbb" to "",
-    "\\operatorname" to "", "\\limits" to "", "\\nolimits" to "",
-    "\\quad" to "  ", "\\qquad" to "    ", "\\," to " ", "\\;" to " ", "\\:" to " ",
-    "\\!" to "", "\\{" to "{", "\\}" to "}", "\\|" to "‖",
-    "\\ll" to "≪", "\\gg" to "≫", "\\lceil" to "⌈", "\\rceil" to "⌉", "\\lfloor" to "⌊", "\\rfloor" to "⌋"
-).sortedByDescending { it.first.length }
-
-private fun findInlineClose(source: String, from: Int, marker: String): Int {
-    var j = from
-    while (j < source.length) {
-        val idx = source.indexOf(marker[0], j)
-        if (idx < 0) return -1
-        if (source.startsWith(marker, idx)) return idx
-        j = idx + 1
-    }
-    return -1
 }

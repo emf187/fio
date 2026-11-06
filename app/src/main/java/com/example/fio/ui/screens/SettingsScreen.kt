@@ -422,6 +422,47 @@ fun SettingsScreen(repository: FioRepository) {
             }
         }
 
+        // --- 2b. AI extras: related images in answers ---
+        item {
+            FioCard(
+                backgroundColor = colors.surface,
+                borderColor = colors.border,
+                padding = PaddingValues(16.dp)
+            ) {
+                Text("AI Answers: Math & Related Images", color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "Wingman and Tutor always render real math (fractions, powers, Σ, ∫). They can also fetch 1–2 relevant images from the web for replies where a picture truly helps — abstract concepts, objects, diagrams.",
+                    color = colors.textMuted,
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Show related images in AI answers", color = colors.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                        Text(
+                            text = if (settings.showAiImages) "On — images may appear under replies that need them (uses data)." else "Off — text-only replies (saves data).",
+                            color = colors.textMuted,
+                            fontSize = 11.sp
+                        )
+                    }
+                    Switch(
+                        checked = settings.showAiImages,
+                        onCheckedChange = {
+                            repository.updateSettings(settings.copy(showAiImages = it))
+                        },
+                        colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = colors.primary),
+                        modifier = Modifier.testTag("show_ai_images_toggle")
+                    )
+                }
+            }
+        }
+
         // --- 3. Theme & Accessibility Customization ---
         item {
             FioCard(

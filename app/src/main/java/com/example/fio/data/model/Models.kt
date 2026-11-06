@@ -188,6 +188,8 @@ data class NoteItem(
     val courseId: String? = null,
     val tags: List<String> = emptyList(),
     val imageUris: List<String> = emptyList(),
+    /** Category folder name; empty string = Unfiled (no folder). */
+    val folder: String = "",
     val createdAtMillis: Long = currentTimestamp(),
     val updatedAtMillis: Long = currentTimestamp()
 )
@@ -260,6 +262,8 @@ data class AppSettings(
     val accentColor: String = "BLUE", // BLUE (default), PURPLE, TEAL, GREEN, AMBER, ROSE, ORANGE
     val fontScale: Float = 1.0f,
     val reduceMotion: Boolean = false,
+    /** Fetch 1–2 related web images for AI answers where the model finds them helpful. */
+    val showAiImages: Boolean = true,
     val gracePeriodSeconds: Int = 15,
     val breakFrequencyMinutes: Int = 50,
     val breakDurationMinutes: Int = 10,
@@ -308,6 +312,8 @@ data class ChatMessage(
     val sender: String, // "USER" or "WINGMAN"
     val text: String,
     val courseId: String? = null,
+    /** Local paths of related images fetched for AI answers (Wingman/Tutor). */
+    val aiImagePaths: List<String> = emptyList(),
     val imagePath: String? = null,
     val timestampMillis: Long = currentTimestamp()
 )

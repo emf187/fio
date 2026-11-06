@@ -24,14 +24,19 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
+import com.example.fio.data.ai.AiImageHelper
+import com.example.fio.data.ai.AiImageHelper.MATH_RULES
 import com.example.fio.data.ai.AiResult
 import com.example.fio.data.ai.FioAiClient
 import com.example.fio.data.model.*
 import com.example.fio.data.storage.FioRepository
 import com.example.fio.data.storage.ImageStorage
+import com.example.fio.ui.components.AiImageStrip
+import com.example.fio.ui.components.AiImageViewerDialog
 import com.example.fio.ui.components.FioBadge
 import com.example.fio.ui.components.FioCard
 import com.example.fio.ui.components.FioDivider
+import com.example.fio.ui.components.FioMarkdown
 import com.example.fio.ui.theme.LocalFioColors
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -72,6 +77,13 @@ fun TutorScreen(
     var isGrading by remember { mutableStateOf(false) }
     var gradingResult by remember { mutableStateOf<TutorSession?>(null) }
     var tutorErrorMessage by remember { mutableStateOf<String?>(null) }
+
+    // Related images from the AI (same capability as Wingman) + Socratic hint state
+    var viewingImagePath by remember { mutableStateOf<String?>(null) }
+    var questionImages by remember { mutableStateOf<List<String>>(emptyList()) }
+    var hintCard by remember { mutableStateOf<String?>(null) }
+    var hintImages by remember { mutableStateOf<List<String>>(emptyList()) }
+    var isHintLoading by remember { mutableStateOf(false) }
 
     // Photo picker launcher (Zero-permission Android Photo Picker compliant with Google Play)
     val photoPickerLauncher = rememberLauncherForActivityResult(
@@ -145,14 +157,27 @@ fun TutorScreen(
                                     val chunks = courseDocs.flatMap { it.chunks }
                                     when (val res = aiClient.sendPrompt(
                                         prompt = "Generate 1 challenging exam practice question testing deep conceptual understanding of the course material.",
-                                        systemInstruction = "You are an expert university professor creating rigorous exam questions.",
+                                        systemInstruction = "You are a university tutor creating ONE rigorous exam practice question at a time. " +
+                                            "Output only the question text with no preamble and never include the answer or a worked solution. " +
+                                            "Questions should invite the student to reason step by step independently. " +
+                                            MATH_RULES +
+                                            (if (settings.showAiImages) AiImageHelper.IMAGE_RULE else ""),
                                         settings = settings,
                                         chunks = chunks
                                     )) {
                                         is AiResult.Success -> {
-                                            activeQuestionPrompt = res.data.trim()
+                                            val (clean, imageQuery) = AiImageHelper.extractImageQuery(res.data)
+                                            questionImages = if (imageQuery != null && settings.showAiImages) {
+                                                runCatching {
+                                                    AiImageHelper.fetchRelatedImages(context, imageQuery, 2)
+                                                }.getOrDefault(emptyList<AiImageHelper.AiImage>())
+                                                    .map { it.localPath }
+                                            } else emptyList()
+                                            activeQuestionPrompt = clean.trim()
                                             studentAnswerInput = ""
                                             gradingResult = null
+                                            hintCard = null
+                                            hintImages = emptyList()
                                         }
                                         is AiResult.Error -> tutorErrorMessage = res.message
                                     }
@@ -169,13 +194,11 @@ fun TutorScreen(
                 }
 
                 Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = activeQuestionPrompt,
-                    color = colors.textPrimary,
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp,
-                    fontWeight = FontWeight.Medium
-                )
+                FioMarkdown(text = activeQuestionPrompt, baseFontSize = 12.sp)
+                if (questionImages.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    AiImageStrip(paths = questionImages, onOpen = { viewingImagePath = it })
+                }
 
                 // Optional attached photo from past questions / handwritten notes
                 selectedPhotoUri?.let { uri ->
@@ -213,7 +236,7 @@ fun TutorScreen(
                 Spacer(modifier = Modifier.height(10.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // Upload past paper photo
@@ -229,11 +252,70 @@ fun TutorScreen(
                         ),
                         border = null,
                         shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.testTag("upload_past_question_photo")
+                        modifier = Modifier.weight(1f).testTag("upload_past_question_photo")
                     ) {
                         Icon(imageVector = Icons.Default.AddPhotoAlternate, contentDescription = null, tint = colors.textSecondary, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Add Photo", color = colors.textSecondary, fontSize = 11.sp)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Photo", color = colors.textSecondary, fontSize = 11.sp)
+                    }
+
+                    // Socratic hint: nudge without revealing the answer (same image/math capability as Wingman)
+                    OutlinedButton(
+                        onClick = {
+                            if (!isHintLoading) {
+                                isHintLoading = true
+                                tutorErrorMessage = null
+                                coroutineScope.launch {
+                                    val chunks = courseDocs.flatMap { it.chunks }
+                                    val hintPrompt = buildString {
+                                        append("Exam question: $activeQuestionPrompt\n")
+                                        if (studentAnswerInput.isNotBlank()) {
+                                            append("Student's attempt so far:\n${studentAnswerInput.trim()}\n")
+                                        } else {
+                                            append("The student has not written anything yet.\n")
+                                        }
+                                        append("Give ONE hint or guiding question that nudges the student toward the next step.")
+                                    }
+                                    when (val res = aiClient.sendPrompt(
+                                        prompt = hintPrompt,
+                                        systemInstruction = "You are a Socratic tutor for university students. NEVER reveal the answer, the worked solution or the final result. " +
+                                            "Give one short hint (55 words max): a guiding question, or which exact concept/formula to start from, or the smallest missing step. " +
+                                            MATH_RULES +
+                                            (if (settings.showAiImages) AiImageHelper.IMAGE_RULE else ""),
+                                        settings = settings,
+                                        chunks = chunks
+                                    )) {
+                                        is AiResult.Success -> {
+                                            val (clean, imageQuery) = AiImageHelper.extractImageQuery(res.data)
+                                            hintCard = clean.trim()
+                                            hintImages = if (imageQuery != null && settings.showAiImages) {
+                                                runCatching {
+                                                    AiImageHelper.fetchRelatedImages(context, imageQuery, 1)
+                                                }.getOrDefault(emptyList<AiImageHelper.AiImage>())
+                                                    .map { it.localPath }
+                                            } else emptyList()
+                                        }
+                                        is AiResult.Error -> tutorErrorMessage = res.message
+                                    }
+                                    isHintLoading = false
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = colors.primary,
+                            containerColor = colors.surfaceElevated
+                        ),
+                        border = null,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(1f).testTag("get_hint_button")
+                    ) {
+                        if (isHintLoading) {
+                            CircularProgressIndicator(modifier = Modifier.size(14.dp), color = colors.primary, strokeWidth = 2.dp)
+                        } else {
+                            Icon(imageVector = Icons.Default.Lightbulb, contentDescription = null, tint = colors.primary, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Hint", color = colors.primary, fontSize = 11.sp)
+                        }
                     }
 
                     Button(
@@ -263,7 +345,11 @@ Evaluate this answer. Return ONLY a valid JSON object without markdown fences, w
 
                                     when (val res = aiClient.sendPrompt(
                                         prompt = evaluationPrompt,
-                                        systemInstruction = "You are an objective, encouraging university grading tutor. You can evaluate text and attached student photos/diagrams.",
+                                        systemInstruction = "You are an objective, encouraging university grading tutor. You can evaluate text and attached student photos/diagrams. " +
+                                            "Your feedback must teach: first confirm what was right, then give the next logical steps as HINTS and guiding questions that let the student finish the reasoning themselves - " +
+                                            "do NOT dump the full corrected answer or final result. Never exceed 130 words. " +
+                                            MATH_RULES +
+                                            "Output ONLY the raw JSON object requested by the prompt, no markdown fences and no [IMG] markers.",
                                         settings = settings,
                                         chunks = chunks,
                                         imageBase64 = storedImg?.second
@@ -304,13 +390,41 @@ Evaluate this answer. Return ONLY a valid JSON object without markdown fences, w
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
                         shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.testTag("submit_answer_button")
+                        modifier = Modifier.weight(1.4f).testTag("submit_answer_button")
                     ) {
                         if (isGrading) {
                             CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
                             Spacer(modifier = Modifier.width(6.dp))
                         }
                         Text("Submit & Grade", color = Color.White, fontSize = 12.sp)
+                    }
+                }
+
+                // Socratic hint card (teaches; never reveals the answer)
+                hintCard?.let { hint ->
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(colors.primaryContainer.copy(alpha = 0.35f))
+                            .border(1.dp, colors.primary.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
+                            .padding(10.dp)
+                            .testTag("tutor_hint_card")
+                    ) {
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(imageVector = Icons.Default.Lightbulb, contentDescription = null, tint = colors.primary, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Tutor Nudge", color = colors.primary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            FioMarkdown(text = hint, baseFontSize = 12.sp)
+                            if (hintImages.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                AiImageStrip(paths = hintImages, onOpen = { viewingImagePath = it })
+                            }
+                        }
                     }
                 }
 
@@ -338,7 +452,7 @@ Evaluate this answer. Return ONLY a valid JSON object without markdown fences, w
                         FioBadge(text = "Grade: ${res.aiGrade} (${res.scorePercentage}%)", color = colors.success)
                     }
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(text = res.feedback, color = colors.textPrimary, fontSize = 12.sp, lineHeight = 16.sp)
+                    FioMarkdown(text = res.feedback, baseFontSize = 12.sp)
 
                     if (res.weakTopics.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(10.dp))
@@ -353,7 +467,7 @@ Evaluate this answer. Return ONLY a valid JSON object without markdown fences, w
                     if (res.recommendedRevision.isNotBlank()) {
                         Spacer(modifier = Modifier.height(10.dp))
                         Text("Recommended Revision:", color = colors.info, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                        Text(text = res.recommendedRevision, color = colors.textSecondary, fontSize = 11.sp)
+                        FioMarkdown(text = res.recommendedRevision, baseFontSize = 11.sp)
 
                         Spacer(modifier = Modifier.height(8.dp))
                         Button(
@@ -438,7 +552,7 @@ Evaluate this answer. Return ONLY a valid JSON object without markdown fences, w
             Text("Past Questions & Results (${courseSessions.size})", color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
         }
 
-        items(courseSessions) { session ->
+        items(courseSessions, key = { it.id }) { session ->
             FioCard(
                 backgroundColor = colors.surface,
                 borderColor = colors.border,
@@ -457,5 +571,10 @@ Evaluate this answer. Return ONLY a valid JSON object without markdown fences, w
                 Text(text = "Logged: ${formatTimestamp(session.loggedAtMillis)}", color = colors.textMuted, fontSize = 9.sp)
             }
         }
+    }
+
+    // Full-screen viewer for related AI images
+    viewingImagePath?.let { path ->
+        AiImageViewerDialog(path = path, onDismiss = { viewingImagePath = null })
     }
 }

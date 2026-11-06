@@ -37,8 +37,12 @@ import com.example.fio.data.ai.AiResult
 import com.example.fio.data.ai.FioAiClient
 import com.example.fio.data.document.DocumentImporter
 import com.example.fio.data.model.*
+import com.example.fio.data.ai.AiImageHelper
+import com.example.fio.data.ai.AiImageHelper.MATH_RULES
 import com.example.fio.data.storage.FioRepository
 import com.example.fio.data.storage.ImageStorage
+import com.example.fio.ui.components.AiImageStrip
+import com.example.fio.ui.components.AiImageViewerDialog
 import com.example.fio.ui.components.FioBadge
 import com.example.fio.ui.components.FioCard
 import com.example.fio.ui.components.FioMarkdown
@@ -156,6 +160,7 @@ fun StudyCompanionScreen(
     var chatTab by remember { mutableStateOf(0) }
     var aiJob by remember { mutableStateOf<Job?>(null) }
     val clipboard = LocalClipboardManager.current
+    var viewingImagePath by remember { mutableStateOf<String?>(null) }
 
     // One shared path for the send button, Retry and Edit-and-resend, so the
     // chat behaves like a real LLM conversation from every entry point.
@@ -171,13 +176,32 @@ fun StudyCompanionScreen(
                 val chunks = courseDocs.flatMap { it.chunks }
                 when (val res = aiClient.sendPrompt(
                     prompt = prompt,
-                    systemInstruction = "You are Wingman, a precise personal study tutor answering questions based on course material and diagrams. Subject: ${activeCourse.name}",
+                    systemInstruction = buildString {
+                        append("You are Wingman, a precise personal study tutor answering questions based on course material and diagrams. Subject: ${activeCourse.name}. ")
+                        append(MATH_RULES)
+                        if (settings.showAiImages) append(AiImageHelper.IMAGE_RULE)
+                    },
                     settings = settings,
                     chunks = chunks,
                     imageBase64 = storedImg?.second
                 )) {
                     is AiResult.Success -> {
-                        repository.addChatMessage(ChatMessage(sender = "Wingman", text = res.data, courseId = activeCourse.id))
+                        // Strip the [IMG: …] marker and, when the model asked for one
+                        // and images are enabled, fetch 1-2 related pictures from the web.
+                        val (clean, imageQuery) = AiImageHelper.extractImageQuery(res.data)
+                        val images = if (imageQuery != null && settings.showAiImages) {
+                            try {
+                                AiImageHelper.fetchRelatedImages(context, imageQuery, 2)
+                            } catch (e: Exception) { emptyList() }
+                        } else emptyList()
+                        repository.addChatMessage(
+                            ChatMessage(
+                                sender = "Wingman",
+                                text = clean,
+                                courseId = activeCourse.id,
+                                aiImagePaths = images.map { it.localPath }
+                            )
+                        )
                     }
                     is AiResult.Error -> {
                         val err = res.message
@@ -236,6 +260,11 @@ fun StudyCompanionScreen(
                 }
             )
         }
+    }
+
+    // Full-screen viewer for related AI images (chat + history tabs)
+    viewingImagePath?.let { path ->
+        AiImageViewerDialog(path = path, onDismiss = { viewingImagePath = null })
     }
 
     // Long-press confirmation: remove a document from the library
@@ -897,10 +926,18 @@ fun StudyCompanionScreen(
                                         lineHeight = 15.sp
                                     )
                                 } else {
-                                    FioMarkdown(
-                                        text = msg.text,
-                                        baseFontSize = 11.sp
-                                    )
+                                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        FioMarkdown(
+                                            text = msg.text,
+                                            baseFontSize = 11.sp
+                                        )
+                                        if (msg.aiImagePaths.isNotEmpty()) {
+                                            AiImageStrip(
+                                                paths = msg.aiImagePaths,
+                                                onOpen = { viewingImagePath = it }
+                                            )
+                                        }
+                                    }
                                 }
                             }
                 }

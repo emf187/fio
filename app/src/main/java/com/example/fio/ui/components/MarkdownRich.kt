@@ -122,9 +122,26 @@ fun buildMarkdownAnnotated(raw: String, textColor: Color): AnnotatedString =
     buildMarkdownTransformed(raw, textColor).text
 
 /** Visual transformation that hides Markdown delimiters while they style the text under the caret. */
-fun markdownVisualTransformation(textColor: Color): VisualTransformation =
-    VisualTransformation { input -> buildMarkdownTransformed(input.text, textColor) }
+fun markdownVisualTransformation(textColor: Color): VisualTransformation {
+    // Single-entry memo per editor instance: typing re-transforms on each keystroke,
+    // but plain recompositions with an unchanged value reuse the last result.
+    var lastInput = "\u0000-never-matches"
+    var lastResult: TransformedText? = null
+    return VisualTransformation { input ->
+        val raw = input.text
+        if (raw == lastInput && lastResult != null) {
+            lastResult!!
+        } else {
+            val built = buildMarkdownTransformed(raw, textColor)
+            lastInput = raw
+            lastResult = built
+            built
+        }
+    }
+}
 
 /** Strips inline marker characters for plain-text snippets (note list previews). */
+private val MARKER_CHARS = Regex("""\*\*|\*|__|~~|`""")
+
 fun stripMarkdownMarkers(raw: String): String =
-    raw.replace(Regex("\\*\\*|\\*|__|~~|`"), "")
+    raw.replace(MARKER_CHARS, "")

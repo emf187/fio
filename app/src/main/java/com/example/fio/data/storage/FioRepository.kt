@@ -78,6 +78,10 @@ class FioRepository(private val context: Context) {
     private val _notes = MutableStateFlow<List<NoteItem>>(emptyList())
     val notes: StateFlow<List<NoteItem>> = _notes.asStateFlow()
 
+    /** User-created note category folders (persisted; empty folders still exist). */
+    private val _noteFolders = MutableStateFlow<List<String>>(emptyList())
+    val noteFolders: StateFlow<List<String>> = _noteFolders.asStateFlow()
+
     private val _sessionLogs = MutableStateFlow<List<FocusSessionLog>>(emptyList())
     val sessionLogs: StateFlow<List<FocusSessionLog>> = _sessionLogs.asStateFlow()
 
@@ -126,7 +130,8 @@ class FioRepository(private val context: Context) {
             breakFrequencyMinutes = prefs.getInt("break_freq", 50),
             breakDurationMinutes = prefs.getInt("break_dur", 10),
             sleepTargetHours = prefs.getFloat("sleep_target", 8.0f).toDouble(),
-            mealTargetCount = prefs.getInt("meal_target", 3)
+            mealTargetCount = prefs.getInt("meal_target", 3),
+            showAiImages = prefs.getBoolean("show_ai_images", true)
         )
 
         // One-time migration to the Notion-style look: users who never picked a
@@ -167,6 +172,7 @@ class FioRepository(private val context: Context) {
 
         _galleryImages.value = loadGalleryImages()
         loadTimetable()
+        loadNoteFolders()
     }
 
     /**
@@ -599,6 +605,47 @@ class FioRepository(private val context: Context) {
         saveAll()
     }
 
+    /** Auto-register the folder when a note is filed/created into a custom one. */
+    private fun registerNoteFolder(name: String) {
+        val trimmed = name.trim().take(40)
+        if (trimmed.isBlank()) return
+        if (_noteFolders.value.any { it.equals(trimmed, ignoreCase = true) }) return
+        _noteFolders.value = (_noteFolders.value + trimmed).sorted()
+        saveNoteFolders()
+    }
+
+    fun addNoteFolder(name: String) = registerNoteFolder(name)
+
+    /** Deletes a folder; notes inside become Unfiled. */
+    fun deleteNoteFolder(name: String) {
+        if (_noteFolders.value.none { it == name }) return
+        _noteFolders.value = _noteFolders.value.filterNot { it == name }
+        if (_notes.value.any { it.folder == name }) {
+            _notes.value = _notes.value.map { if (it.folder == name) it.copy(folder = "", updatedAtMillis = currentTimestamp()) else it }
+            saveAll()
+        }
+        saveNoteFolders()
+    }
+
+    private fun saveNoteFolders() {
+        val arr = JSONArray()
+        _noteFolders.value.forEach { arr.put(it) }
+        prefs.edit().putString("note_folders_json", arr.toString()).apply()
+    }
+
+    private fun loadNoteFolders() {
+        val raw = prefs.getString("note_folders_json", null) ?: return
+        runCatching {
+            val arr = JSONArray(raw)
+            val list = mutableListOf<String>()
+            for (i in 0 until arr.length()) {
+                val name = arr.optString(i).trim()
+                if (name.isNotBlank()) list.add(name)
+            }
+            _noteFolders.value = list
+        }
+    }
+
     // --- Courses & Documents ---
     fun addCourse(name: String, sectionType: SectionType, description: String = ""): CourseSection {
         val course = CourseSection(name = name, sectionType = sectionType, description = description)
@@ -713,6 +760,7 @@ class FioRepository(private val context: Context) {
             .putInt("break_dur", s.breakDurationMinutes)
             .putFloat("sleep_target", s.sleepTargetHours.toFloat())
             .putInt("meal_target", s.mealTargetCount)
+            .putBoolean("show_ai_images", s.showAiImages)
             .apply()
     }
 
@@ -852,6 +900,7 @@ class FioRepository(private val context: Context) {
             obj.put("title", n.title)
             obj.put("content", n.content)
             obj.put("courseId", n.courseId ?: "")
+            obj.put("folder", n.folder)
             val tagsArray = JSONArray()
             n.tags.forEach { tagsArray.put(it) }
             obj.put("tags", tagsArray)
@@ -863,6 +912,11 @@ class FioRepository(private val context: Context) {
             notesArray.put(obj)
         }
         root.put("notes", notesArray)
+
+        // 6b. Note category folders
+        val noteFoldersArray = JSONArray()
+        _noteFolders.value.forEach { noteFoldersArray.put(it) }
+        root.put("noteFolders", noteFoldersArray)
 
         // 7. Export sleep logs
         val sleepArray = JSONArray()
@@ -954,6 +1008,9 @@ class FioRepository(private val context: Context) {
             obj.put("text", c.text)
             obj.put("courseId", c.courseId ?: "")
             obj.put("imagePath", c.imagePath ?: "")
+            val aiImgArray = JSONArray()
+            c.aiImagePaths.forEach { aiImgArray.put(it) }
+            obj.put("aiImagePaths", aiImgArray)
             obj.put("timestampMillis", c.timestampMillis)
             chatArray.put(obj)
         }
@@ -974,6 +1031,7 @@ class FioRepository(private val context: Context) {
         settingsObj.put("breakDurationMinutes", s.breakDurationMinutes)
         settingsObj.put("sleepTargetHours", s.sleepTargetHours)
         settingsObj.put("mealTargetCount", s.mealTargetCount)
+        settingsObj.put("showAiImages", s.showAiImages)
         root.put("settings", settingsObj)
 
         return if (pretty) root.toString(2) else root.toString()
@@ -1211,6 +1269,7 @@ class FioRepository(private val context: Context) {
                             title = obj.getString("title"),
                             content = obj.getString("content"),
                             courseId = obj.optString("courseId", "").ifEmpty { null },
+                            folder = obj.optString("folder", ""),
                             tags = tagsList,
                             imageUris = imgsList,
                             createdAtMillis = obj.optLong("createdAtMillis", currentTimestamp()),
@@ -1219,6 +1278,20 @@ class FioRepository(private val context: Context) {
                     )
                 }
                 _notes.value = list
+            }
+
+            // Note category folders
+            if (root.has("noteFolders")) {
+                val foldersArr = root.optJSONArray("noteFolders")
+                val folders = mutableListOf<String>()
+                if (foldersArr != null) {
+                    for (i in 0 until foldersArr.length()) {
+                        val name = foldersArr.optString(i).trim()
+                        if (name.isNotBlank()) folders.add(name)
+                    }
+                }
+                _noteFolders.value = folders
+                saveNoteFolders()
             }
 
             // Sleep logs
@@ -1348,6 +1421,14 @@ class FioRepository(private val context: Context) {
                             text = obj.getString("text"),
                             courseId = obj.optString("courseId", "").ifEmpty { null },
                             imagePath = obj.optString("imagePath", "").ifEmpty { null },
+                            aiImagePaths = run {
+                                val result = mutableListOf<String>()
+                                if (obj.has("aiImagePaths")) {
+                                    val a = obj.optJSONArray("aiImagePaths")
+                                    if (a != null) for (k in 0 until a.length()) result.add(a.optString(k))
+                                }
+                                result
+                            },
                             timestampMillis = obj.optLong("timestampMillis", currentTimestamp())
                         )
                     )
@@ -1370,7 +1451,8 @@ class FioRepository(private val context: Context) {
                     breakFrequencyMinutes = sObj.optInt("breakFrequencyMinutes", _settings.value.breakFrequencyMinutes),
                     breakDurationMinutes = sObj.optInt("breakDurationMinutes", _settings.value.breakDurationMinutes),
                     sleepTargetHours = sObj.optDouble("sleepTargetHours", _settings.value.sleepTargetHours),
-                    mealTargetCount = sObj.optInt("mealTargetCount", _settings.value.mealTargetCount)
+                    mealTargetCount = sObj.optInt("mealTargetCount", _settings.value.mealTargetCount),
+                    showAiImages = sObj.optBoolean("showAiImages", _settings.value.showAiImages)
                 )
                 _settings.value = updatedSettings
                 saveSettingsToPrefs(updatedSettings)

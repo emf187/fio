@@ -7,6 +7,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -46,15 +47,25 @@ import com.example.fio.ui.theme.LocalFioColors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun NotesScreen(repository: FioRepository) {
     val colors = LocalFioColors.current
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val notes by repository.notes.collectAsState()
+    val noteFolders by repository.noteFolders.collectAsState()
 
     var searchQuery by remember { mutableStateOf("") }
     var selectedTag by remember { mutableStateOf<String?>(null) }
+    // Note categories: null = All folders, "" = Unfiled, otherwise a folder name.
+    var selectedFolder by remember { mutableStateOf<String?>(null) }
+
+    // New-folder dialog (list view)
+    var showNewFolderDialog by remember { mutableStateOf(false) }
+    var newFolderNameInput by remember { mutableStateOf("") }
+    // Long-press a folder chip → delete confirm
+    var folderPendingDelete by remember { mutableStateOf<String?>(null) }
 
     // Active Note Editor state
     var editingNote by remember { mutableStateOf<NoteItem?>(null) }
@@ -108,13 +119,23 @@ fun NotesScreen(repository: FioRepository) {
         notes.flatMap { it.tags }.distinct()
     }
 
-    val filteredNotes = remember(notes, searchQuery, selectedTag) {
+    // Union of persisted folders and folders found on notes (both stay selectable).
+    val allFolders = remember(notes, noteFolders) {
+        (noteFolders + notes.mapNotNull { it.folder.ifBlank { null } }).distinct().sorted()
+    }
+
+    val filteredNotes = remember(notes, searchQuery, selectedTag, selectedFolder) {
         notes.filter { note ->
             val matchesSearch = searchQuery.isBlank() ||
                     note.title.contains(searchQuery, ignoreCase = true) ||
                     note.content.contains(searchQuery, ignoreCase = true)
             val matchesTag = selectedTag == null || note.tags.contains(selectedTag)
-            matchesSearch && matchesTag
+            val matchesFolder = when (selectedFolder) {
+                null -> true
+                "" -> note.folder.isBlank()
+                else -> note.folder.equals(selectedFolder, ignoreCase = true)
+            }
+            matchesSearch && matchesTag && matchesFolder
         }
     }
 
@@ -122,6 +143,8 @@ fun NotesScreen(repository: FioRepository) {
         val note = editingNote!!
         // TextFieldValue drives the body editor so the toolbar can format the current selection.
         var contentValue by remember(note.id) { mutableStateOf(TextFieldValue(note.content)) }
+        // Folder picker for this note
+        var showNoteFolderPicker by remember { mutableStateOf(false) }
 
         fun commitContentChange(update: TextFieldValue = contentValue) {
             contentValue = update
@@ -210,6 +233,36 @@ fun NotesScreen(repository: FioRepository) {
                 fontSize = 10.sp,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
             )
+
+            // Folder selector for this note (categories)
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Folder,
+                    contentDescription = null,
+                    tint = colors.primary,
+                    modifier = Modifier.size(14.dp)
+                )
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(if (note.folder.isBlank()) colors.surfaceElevated else colors.primaryContainer)
+                        .border(1.dp, if (note.folder.isBlank()) colors.border else colors.primary, RoundedCornerShape(10.dp))
+                        .clickable { showNoteFolderPicker = true }
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                        .testTag("note_folder_selector")
+                ) {
+                    Text(
+                        text = if (note.folder.isBlank()) "Add to folder" else note.folder,
+                        color = if (note.folder.isBlank()) colors.textMuted else colors.primary,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
 
             FioDivider(modifier = Modifier.padding(vertical = 6.dp))
 
@@ -336,6 +389,91 @@ fun NotesScreen(repository: FioRepository) {
                 }
             }
         }
+        // Move note to a folder / create a new category
+        if (showNoteFolderPicker) {
+            AlertDialog(
+                onDismissRequest = { showNoteFolderPicker = false },
+                containerColor = colors.surface,
+                title = { Text("File this note", color = colors.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Folder:", color = colors.textMuted, fontSize = 11.sp)
+                        // Unfile option (caters to notes living directly outside folders)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (note.folder.isBlank()) colors.primaryContainer else colors.surfaceElevated)
+                                .clickable {
+                                    val updated = note.copy(folder = "")
+                                    editingNote = updated
+                                    pendingNoteSave = null
+                                    repository.saveNote(updated)
+                                    showNoteFolderPicker = false
+                                }
+                                .padding(horizontal = 10.dp, vertical = 8.dp)
+                        ) {
+                            Text("Unfiled", color = if (note.folder.isBlank()) colors.primary else colors.textPrimary, fontSize = 12.sp)
+                        }
+                        LazyColumn(modifier = Modifier.height(160.dp)) {
+                            items(allFolders) { folder ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (note.folder.equals(folder, true)) colors.primaryContainer else Color.Transparent)
+                                        .clickable {
+                                            val updated = note.copy(folder = folder)
+                                            editingNote = updated
+                                            pendingNoteSave = null
+                                            repository.saveNote(updated)
+                                            showNoteFolderPicker = false
+                                        }
+                                        .padding(horizontal = 10.dp, vertical = 8.dp)
+                                ) {
+                                    Icon(imageVector = Icons.Default.Folder, contentDescription = null, tint = colors.primary, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(folder, color = if (note.folder.equals(folder, true)) colors.primary else colors.textPrimary, fontSize = 12.sp)
+                                }
+                            }
+                        }
+                        OutlinedTextField(
+                            value = newFolderNameInput,
+                            onValueChange = { newFolderNameInput = it },
+                            label = { Text("New folder name", color = colors.textMuted) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth().testTag("new_note_folder_input")
+                        )
+                        Button(
+                            onClick = {
+                                val name = newFolderNameInput.trim()
+                                if (name.isNotBlank()) {
+                                    repository.addNoteFolder(name)
+                                    val updated = note.copy(folder = name)
+                                    editingNote = updated
+                                    pendingNoteSave = null
+                                    repository.saveNote(updated)
+                                    newFolderNameInput = ""
+                                    showNoteFolderPicker = false
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth().testTag("create_note_folder_button")
+                        ) {
+                            Icon(imageVector = Icons.Default.CreateNewFolder, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text("Create & file here", color = Color.White, fontSize = 11.sp)
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showNoteFolderPicker = false }) {
+                        Text("Done", color = colors.textSecondary)
+                    }
+                }
+            )
+        }
         return
     }
 
@@ -362,7 +500,12 @@ fun NotesScreen(repository: FioRepository) {
 
                 IconButton(
                     onClick = {
-                        val newNote = NoteItem(title = "Untitled Note", content = "")
+                        val newNote = NoteItem(
+                            title = "Untitled Note",
+                            content = "",
+                            folder = selectedFolder?.takeIf { it.isNotBlank() } ?: ""
+                        )
+                        selectedFolder?.takeIf { it.isNotBlank() }?.let { repository.addNoteFolder(it) }
                         repository.saveNote(newNote)
                         editingNote = newNote
                     },
@@ -372,6 +515,48 @@ fun NotesScreen(repository: FioRepository) {
                         .testTag("create_new_note_button")
                 ) {
                     Icon(imageVector = Icons.Default.Add, contentDescription = "New Note", tint = Color.White)
+                }
+            }
+        }
+
+        // Folder chips (categories)
+        item(key = "note_folder_chips") {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                FolderChip(
+                    label = "All",
+                    icon = Icons.Default.Apps,
+                    selected = selectedFolder == null,
+                    tag = "folder_chip_all"
+                ) { selectedFolder = null }
+                FolderChip(
+                    label = "Unfiled",
+                    icon = Icons.Default.FolderOff,
+                    selected = selectedFolder == "",
+                    tag = "folder_chip_unfiled"
+                ) { selectedFolder = "" }
+                allFolders.forEach { folder ->
+                    FolderChip(
+                        label = folder,
+                        icon = Icons.Default.Folder,
+                        selected = selectedFolder == folder,
+                        tag = "folder_chip_$folder",
+                        onLongClick = { folderPendingDelete = folder }
+                    ) { selectedFolder = folder }
+                }
+                FolderChip(
+                    label = "New",
+                    icon = Icons.Default.CreateNewFolder,
+                    selected = false,
+                    tag = "folder_chip_new"
+                ) {
+                    newFolderNameInput = ""
+                    showNewFolderDialog = true
                 }
             }
         }
@@ -435,7 +620,7 @@ fun NotesScreen(repository: FioRepository) {
                 Text("No matching notes found. Create your first note above.", color = colors.textMuted, fontSize = 12.sp)
             }
         } else {
-            items(filteredNotes) { noteItem ->
+            items(filteredNotes, key = { it.id }) { noteItem ->
                 FioCard(
                     backgroundColor = colors.surface,
                     borderColor = colors.border,
@@ -450,7 +635,21 @@ fun NotesScreen(repository: FioRepository) {
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(text = noteItem.title, color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = noteItem.title, color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            if (noteItem.folder.isNotBlank()) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Folder,
+                                        contentDescription = null,
+                                        tint = colors.primary,
+                                        modifier = Modifier.size(10.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Text(text = noteItem.folder, color = colors.primary, fontSize = 9.sp)
+                                }
+                            }
+                        }
                         Text(text = formatTimestamp(noteItem.updatedAtMillis), color = colors.textMuted, fontSize = 9.sp)
                     }
                     Spacer(modifier = Modifier.height(4.dp))
@@ -471,6 +670,112 @@ fun NotesScreen(repository: FioRepository) {
                     }
                 }
             }
+        }
+    }
+
+    // New folder dialog
+    if (showNewFolderDialog) {
+        AlertDialog(
+            onDismissRequest = { showNewFolderDialog = false },
+            containerColor = colors.surface,
+            title = { Text("New note folder", color = colors.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold) },
+            text = {
+                OutlinedTextField(
+                    value = newFolderNameInput,
+                    onValueChange = { newFolderNameInput = it },
+                    label = { Text("e.g. Mathematics, Fitness, Ideas", color = colors.textMuted) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("new_folder_name_input")
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val name = newFolderNameInput.trim()
+                        if (name.isNotBlank()) {
+                            repository.addNoteFolder(name)
+                            selectedFolder = name
+                        }
+                        newFolderNameInput = ""
+                        showNewFolderDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary)
+                ) { Text("Create", color = Color.White) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showNewFolderDialog = false }) {
+                    Text("Cancel", color = colors.textSecondary)
+                }
+            }
+        )
+    }
+
+    // Delete folder confirmation (long-press a folder chip)
+    folderPendingDelete?.let { folder ->
+        AlertDialog(
+            onDismissRequest = { folderPendingDelete = null },
+            containerColor = colors.surface,
+            title = { Text("Delete folder \"$folder\"?", color = colors.textPrimary) },
+            text = {
+                Text(
+                    "The notes inside are NOT deleted — they simply become Unfiled. This cannot be undone.",
+                    color = colors.textSecondary
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    repository.deleteNoteFolder(folder)
+                    if (selectedFolder == folder) selectedFolder = null
+                    folderPendingDelete = null
+                }) { Text("Delete folder", color = colors.error, fontWeight = FontWeight.SemiBold) }
+            },
+            dismissButton = {
+                TextButton(onClick = { folderPendingDelete = null }) {
+                    Text("Cancel", color = colors.textMuted)
+                }
+            }
+        )
+    }
+}
+
+/** Category chip for the note-folder bar (tap = filter, long-press = delete). */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun FolderChip(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    selected: Boolean,
+    tag: String,
+    onLongClick: (() -> Unit)? = null,
+    onClick: () -> Unit
+) {
+    val colors = LocalFioColors.current
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (selected) colors.primaryContainer else colors.surface)
+            .border(1.dp, if (selected) colors.primary else colors.border, RoundedCornerShape(10.dp))
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
+            .padding(horizontal = 9.dp, vertical = 5.dp)
+            .testTag(tag)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (selected) colors.primary else colors.textMuted,
+                modifier = Modifier.size(12.dp)
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text = label,
+                color = if (selected) colors.primary else colors.textSecondary,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium
+            )
         }
     }
 }
