@@ -189,15 +189,24 @@ object CasioEngine {
             return left
         }
 
-        /** power := postfix ( '^' power )? — right-associative, bigger than +−×÷-explicit... */
+        /** power := postfix ( '^' signedRhs )? — right-associative... */
         private fun power(): Double {
             val base = postfix()
             if (pos < src.size) {
                 val t = src[pos]
                 if (t is Tok.Op && t.sym == '^') {
                     pos++
+                    // Allow a negative exponent directly: 2^−3 (Casio accepts it).
+                    var sign = 1.0
+                    if (pos < src.size) {
+                        val nt = src[pos]
+                        if (nt is Tok.Op && nt.sym == '−') {
+                            pos++
+                            sign = -1.0
+                        }
+                    }
                     val exponent = power()
-                    val result = base.pow(exponent)
+                    val result = base.pow(sign * exponent)
                     if (result.isNaN()) throw CalcException("Math ERROR")
                     return result
                 }
@@ -338,7 +347,11 @@ object CasioEngine {
     /** Rounds to 10 significant digits like the ES hardware (0.1+0.2 → 0.3). */
     private fun round10(x: Double): Double = when {
         x.isNaN() || x.isInfinite() -> x
-        else -> BigDecimal(x).round(MathContext(10)).toDouble()
+        else -> {
+            val r = BigDecimal(x).round(MathContext(10)).toDouble()
+            // Sub-picorad trig residue snaps to a clean zero (tan 180° → 0).
+            if (abs(r) < 1e-12) 0.0 else r
+        }
     }
 
     /** Casio-style result text: plain decimals, ×10ⁿ beyond range, comma groups. */
