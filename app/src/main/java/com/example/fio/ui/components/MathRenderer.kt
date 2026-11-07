@@ -1,5 +1,6 @@
 package com.example.fio.ui.components
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -9,10 +10,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -446,11 +452,41 @@ private fun scriptGroupAfter(source: String, start: Int): Pair<String, Int>? {
 // ------------------------------------------------------------- stacked fraction
 
 /**
- * A real stacked fraction: numerator over a rule over denominator. Rendered
- * as a standalone inline composable inside FlowRow paragraphs.
+ * A real stacked fraction, typeset by the JLaTeXMath engine (\frac{num}{den}) —
+ * complete characters at any length, no truncation. Falls back to the hand-
+ * drawn rule layout when the TeX engine cannot parse the content.
  */
 @Composable
 fun FractionView(
+    num: String,
+    den: String,
+    colors: FioCustomColors,
+    base: TextUnit,
+    modifier: Modifier = Modifier
+) {
+    val fontSize = ((base.value * 0.86f) * 1.1f).sp
+    val px = with(LocalDensity.current) { fontSize.toPx() }
+    val argb = colors.textPrimary.toArgb()
+    val bmp = remember(num, den, px, argb) {
+        latexBitmap("\\frac{$num}{$den}", px * 1.0f, argb)
+    }
+    if (bmp != null) {
+        Image(
+            bitmap = bmp,
+            contentDescription = null,
+            contentScale = ContentScale.Fit,
+            modifier = modifier
+                .widthIn(max = 240.dp)
+                .padding(horizontal = 2.dp)
+        )
+    } else {
+        LegacyFractionView(num, den, colors, base, modifier)
+    }
+}
+
+/** Hand-drawn fallback fraction (wraps — never truncates with "…"). */
+@Composable
+private fun LegacyFractionView(
     num: String,
     den: String,
     colors: FioCustomColors,
@@ -469,9 +505,7 @@ fun FractionView(
             text = mathLinearAnnotated(tokenize(num), colors),
             color = colors.textPrimary,
             fontSize = fontSize,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            softWrap = false
+            softWrap = true
         )
         Box(
             modifier = Modifier
@@ -483,9 +517,7 @@ fun FractionView(
             text = mathLinearAnnotated(tokenize(den), colors),
             color = colors.textPrimary,
             fontSize = fontSize,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            softWrap = false
+            softWrap = true
         )
     }
 }

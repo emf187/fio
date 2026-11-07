@@ -129,6 +129,9 @@ dependencies {
   implementation(libs.firebase.appcheck.debug)
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
+  // Real LaTeX typesetting engine (offline, GPL + classpath exception):
+  // renders \frac, \sum, \int, matrices, Greek, accents — to crisp bitmaps.
+  implementation("ru.noties:jlatexmath-android:0.2.0")
   implementation(libs.logging.interceptor)
   implementation(libs.moshi.kotlin)
   implementation(libs.okhttp)

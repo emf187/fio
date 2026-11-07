@@ -1,5 +1,6 @@
 package com.example.fio.ui.components
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -21,6 +22,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -255,33 +259,29 @@ private fun RichLine(
     fontWeight: FontWeight? = null,
     lineHeight: TextUnit? = null
 ) {
-    if (hasStackedFraction(source)) {
-        val segments = remember(source, colors) { buildMathSegments(source, colors) }
-        FlowRow(
-            modifier = modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalArrangement = Arrangement.spacedBy(5.dp)
-        ) {
-            segments.forEach { segment ->
-                when (segment) {
-                    is MathSegment.Math -> Text(
-                        text = segment.text,
-                        color = colors.textPrimary,
-                        fontSize = base,
-                        fontWeight = fontWeight,
-                        lineHeight = lineHeight ?: TextUnit.Unspecified,
-                        modifier = Modifier.align(Alignment.CenterVertically)
-                    )
-                    is MathSegment.Frac -> FractionView(
-                        num = segment.num,
-                        den = segment.den,
-                        colors = colors,
-                        base = base,
-                        modifier = Modifier.align(Alignment.CenterVertically)
-                    )
-                }
-            }
+    // Standalone math lines: real TeX typesetting via JLaTeXMath — complete
+    // characters, \frac/\sum/\int/fonts, scaled to fit; legacy renderer is the
+    // fallback for anything the engine cannot parse (e.g. mid-stream).
+    if (isPureMathParagraph(source)) {
+        val px = with(LocalDensity.current) { (base.value * 1.05f).sp.toPx() }
+        val argb = colors.textPrimary.toArgb()
+        val bmp = remember(source, px, argb) { latexBitmap(source.trim(), px, argb) }
+        if (bmp != null) {
+            Image(
+                bitmap = bmp,
+                contentDescription = null,
+                contentScale = ContentScale.FillWidth,
+                modifier = modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 3.dp)
+            )
+            return
         }
+        // TeX parse failed — continue to the classic renderer below.
+    }
+
+    if (hasStackedFraction(source)) {
+        MathFlowRow(source, colors, base, fontWeight, lineHeight, modifier)
     } else {
         val annotated = remember(source, colors) { buildFullLinear(source, colors) }
         Text(
@@ -292,6 +292,44 @@ private fun RichLine(
             lineHeight = lineHeight ?: TextUnit.Unspecified,
             modifier = modifier
         )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun MathFlowRow(
+    source: String,
+    colors: FioCustomColors,
+    base: TextUnit,
+    fontWeight: FontWeight?,
+    lineHeight: TextUnit?,
+    modifier: Modifier = Modifier
+) {
+    val segments = remember(source, colors) { buildMathSegments(source, colors) }
+    FlowRow(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp)
+    ) {
+        segments.forEach { segment ->
+            when (segment) {
+                is MathSegment.Math -> Text(
+                    text = segment.text,
+                    color = colors.textPrimary,
+                    fontSize = base,
+                    fontWeight = fontWeight,
+                    lineHeight = lineHeight ?: TextUnit.Unspecified,
+                    modifier = Modifier.align(Alignment.CenterVertically)
+                )
+                is MathSegment.Frac -> FractionView(
+                    num = segment.num,
+                    den = segment.den,
+                    colors = colors,
+                    base = base,
+                    modifier = Modifier.align(Alignment.CenterVertically)
+                )
+            }
+        }
     }
 }
 
