@@ -84,6 +84,7 @@ fun TutorScreen(
     var hintCard by remember { mutableStateOf<String?>(null) }
     var hintImages by remember { mutableStateOf<List<String>>(emptyList()) }
     var isHintLoading by remember { mutableStateOf(false) }
+    var historyPendingClear by remember { mutableStateOf(false) }
 
     // Photo picker launcher (Zero-permission Android Photo Picker compliant with Google Play)
     val photoPickerLauncher = rememberLauncherForActivityResult(
@@ -551,7 +552,23 @@ Evaluate this answer. Return ONLY a valid JSON object without markdown fences, w
 
         // --- 5. Previous Practice Sessions History ---
         item {
-            Text("Past Questions & Results (${courseSessions.size})", color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Past Questions & Results (${courseSessions.size})",
+                    color = colors.textPrimary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+                if (courseSessions.isNotEmpty()) {
+                    TextButton(
+                        onClick = { historyPendingClear = true },
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text("Clear", color = colors.error, fontSize = 11.sp)
+                    }
+                }
+            }
         }
 
         items(courseSessions, key = { it.id }) { session ->
@@ -578,5 +595,39 @@ Evaluate this answer. Return ONLY a valid JSON object without markdown fences, w
     // Full-screen viewer for related AI images
     viewingImagePath?.let { path ->
         AiImageViewerDialog(path = path, onDismiss = { viewingImagePath = null })
+    }
+
+    // Confirmation: delete the practice sessions listed under the current subject.
+    if (historyPendingClear) {
+        AlertDialog(
+            onDismissRequest = { historyPendingClear = false },
+            containerColor = colors.surface,
+            title = { Text("Clear practice history?", color = colors.textPrimary) },
+            text = {
+                Text(
+                    text = "All past questions and results under \u201c${currentCourse?.name ?: "this subject"}\u201d will be permanently deleted. This cannot be undone.",
+                    color = colors.textSecondary
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    repository.clearTutorSessions(selectedCourseId)
+                    activeQuestionPrompt = ""
+                    studentAnswerInput = ""
+                    gradingResult = null
+                    hintCard = null
+                    hintImages = emptyList()
+                    questionImages = emptyList()
+                    historyPendingClear = false
+                }) {
+                    Text("Clear", color = colors.error, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { historyPendingClear = false }) {
+                    Text("Cancel", color = colors.textMuted)
+                }
+            }
+        )
     }
 }

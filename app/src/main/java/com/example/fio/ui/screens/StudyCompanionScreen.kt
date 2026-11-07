@@ -159,6 +159,7 @@ fun StudyCompanionScreen(
     // Claude-style tabs inside the chat window: Chat (live) / History (log).
     var chatTab by remember { mutableStateOf(0) }
     var aiJob by remember { mutableStateOf<Job?>(null) }
+    var chatPendingDelete by remember { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
     var viewingImagePath by remember { mutableStateOf<String?>(null) }
 
@@ -320,6 +321,36 @@ fun StudyCompanionScreen(
             },
             dismissButton = {
                 TextButton(onClick = { coursePendingRemoval = null }) {
+                    Text("Cancel", color = colors.textMuted)
+                }
+            }
+        )
+    }
+
+    // Confirmation: delete the entire Wingman chat of the current subject.
+    if (chatPendingDelete) {
+        AlertDialog(
+            onDismissRequest = { chatPendingDelete = false },
+            containerColor = colors.surface,
+            title = { Text("Delete chat?", color = colors.textPrimary) },
+            text = {
+                Text(
+                    text = "The entire conversation under \u201c${currentCourse?.name ?: "this subject"}\u201d will be permanently deleted. This cannot be undone.",
+                    color = colors.textSecondary
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    aiJob?.cancel()
+                    repository.clearChatHistory(selectedCourseId)
+                    coursePhotoUri = null
+                    chatPendingDelete = false
+                }) {
+                    Text("Delete", color = colors.error, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { chatPendingDelete = false }) {
                     Text("Cancel", color = colors.textMuted)
                 }
             }
@@ -640,10 +671,10 @@ fun StudyCompanionScreen(
                     // History: now lives in the History tab inside the chat.
                     if (courseChatMessages.isNotEmpty()) {
                         TextButton(
-                            onClick = { repository.clearChatHistory(selectedCourseId) },
+                            onClick = { chatPendingDelete = true },
                             contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
                         ) {
-                            Text("New Chat", color = colors.textMuted, fontSize = 10.sp)
+                            Text("Delete Chat", color = colors.textMuted, fontSize = 10.sp)
                         }
                     }
                 }

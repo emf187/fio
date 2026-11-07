@@ -732,6 +732,14 @@ class FioRepository(private val context: Context) {
         saveAll()
     }
 
+    /** Deletes tutor practice sessions — one course, or every course when null. */
+    fun clearTutorSessions(courseId: String? = null) {
+        _tutorSessions.value = if (courseId != null) {
+            _tutorSessions.value.filterNot { it.courseId == courseId }
+        } else emptyList()
+        saveAll()
+    }
+
     // --- Focus Sessions ---
     fun logFocusSession(session: FocusSessionLog) {
         _sessionLogs.value = listOf(session) + _sessionLogs.value
