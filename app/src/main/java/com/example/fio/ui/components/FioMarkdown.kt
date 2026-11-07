@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -260,31 +261,51 @@ private fun RichLine(
     lineHeight: TextUnit? = null
 ) {
     // Standalone math lines: real TeX typesetting via JLaTeXMath — complete
-    // characters, \frac/\sum/\int/fonts. Rendered at its natural size inside a
-    // horizontally scrollable surface: very long equation chains stay fully
-    // readable — swipe sideways to see the end instead of everything shrinking
-    // to fit. Legacy renderer remains the fallback for anything the engine
-    // cannot parse (e.g. mid-stream).
+    // characters, \frac/\sum/\int/\boxed/fonts. Rendered at its natural size
+    // and centered like a professional AI app: prominent typography, generous
+    // spacing; over-long equation chains become a swipeable full-width row
+    // instead of shrinking. Legacy renderer remains the fallback for anything
+    // the engine cannot parse (e.g. mid-stream).
     if (isPureMathParagraph(source)) {
-        val px = with(LocalDensity.current) { (base.value * 0.88f).sp.toPx() }
+        val px = with(LocalDensity.current) { (base.value * 1.25f).sp.toPx() }
         val argb = colors.textPrimary.toArgb()
         val bmp = remember(source, px, argb) { latexBitmap(source.trim(), px, argb) }
         if (bmp != null) {
             val (wDp, hDp) = with(LocalDensity.current) { bmp.width.toDp() to bmp.height.toDp() }
-            Box(
+            val screenW = LocalConfiguration.current.screenWidthDp.dp
+            Column(
                 modifier = modifier
                     .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(vertical = 3.dp)
+                    .padding(vertical = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Image(
-                    bitmap = bmp,
-                    contentDescription = null,
-                    contentScale = ContentScale.FillBounds,
-                    modifier = Modifier
-                        .width(wDp)
-                        .height(hDp)
-                )
+                if (wDp >= screenW * 0.92f) {
+                    // Wider than the conversation column: scroll sideways.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Image(
+                            bitmap = bmp,
+                            contentDescription = null,
+                            contentScale = ContentScale.FillBounds,
+                            modifier = Modifier
+                                .width(wDp)
+                                .height(hDp)
+                        )
+                    }
+                } else {
+                    Image(
+                        bitmap = bmp,
+                        contentDescription = null,
+                        contentScale = ContentScale.FillBounds,
+                        modifier = Modifier
+                            .width(wDp)
+                            .height(hDp)
+                    )
+                }
             }
             return
         }
@@ -447,10 +468,10 @@ private fun TableView(table: Block.Table, colors: FioCustomColors, base: TextUni
         if (table.header.isNotEmpty()) {
             Row(modifier = Modifier.fillMaxWidth().background(colors.surface)) {
                 for (c in 0 until cols) {
-                    Text(
-                        text = table.header.getOrNull(c) ?: "",
-                        color = colors.textPrimary,
-                        fontSize = base,
+                    RichLine(
+                        source = table.header.getOrNull(c) ?: "",
+                        colors = colors,
+                        base = base,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.weight(1f).padding(horizontal = 8.dp, vertical = 6.dp)
                     )
@@ -461,10 +482,13 @@ private fun TableView(table: Block.Table, colors: FioCustomColors, base: TextUni
         table.rows.forEachIndexed { index, row ->
             Row(modifier = Modifier.fillMaxWidth()) {
                 for (c in 0 until cols) {
-                    Text(
-                        text = row.getOrNull(c) ?: "",
-                        color = colors.textSecondary,
-                        fontSize = base,
+                    // Cells flow through the same rich pipeline as paragraphs,
+                    // so \frac, ^, tables of formulas like "a(1 - a)" render
+                    // as real math — matching pro AI chat interfaces.
+                    RichLine(
+                        source = row.getOrNull(c) ?: "",
+                        colors = colors,
+                        base = base,
                         modifier = Modifier.weight(1f).padding(horizontal = 8.dp, vertical = 6.dp)
                     )
                 }

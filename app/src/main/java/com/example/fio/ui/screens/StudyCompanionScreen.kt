@@ -14,10 +14,12 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -29,6 +31,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.input.pointer.pointerInput
@@ -740,136 +743,6 @@ fun StudyCompanionScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Input Bar
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(
-                        onClick = {
-                            coursePhotoPicker.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                            )
-                        },
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(colors.surface)
-                    ) {
-                        Icon(imageVector = Icons.Default.AddPhotoAlternate, contentDescription = "Attach Image", tint = if (coursePhotoUri != null) colors.primary else colors.textMuted)
-                    }
-
-                    Spacer(modifier = Modifier.width(6.dp))
-
-                    OutlinedTextField(
-                        value = aiQuery,
-                        onValueChange = { aiQuery = it },
-                        placeholder = { Text(if (currentCourse != null) "Ask Wingman about ${currentCourse.name}..." else "Select a subject first...", color = colors.textMuted, fontSize = 12.sp) },
-                        modifier = Modifier.weight(1f).testTag("course_ai_query_input"),
-                        enabled = currentCourse != null,
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = colors.primary,
-                            unfocusedBorderColor = colors.border,
-                            focusedTextColor = colors.textPrimary,
-                            unfocusedTextColor = colors.textPrimary
-                        )
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    IconButton(
-                        onClick = {
-                            if (isAiLoading) {
-                                cancelStudyQuery()
-                            } else if ((aiQuery.isNotBlank() || coursePhotoUri != null) && currentCourse != null) {
-                                val queryText = aiQuery.ifBlank { "Please examine this attached image and explain it in the context of the course material." }
-                                val img = coursePhotoUri
-                                coursePhotoUri = null
-                                launchStudyQuery(queryText, img)
-                            }
-                        },
-                        enabled = currentCourse != null,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(colors.primaryContainer)
-                            .testTag("course_ai_query_submit")
-                    ) {
-                        if (isAiLoading) {
-                            // Stop: cancels the in-flight response.
-                            Icon(imageVector = Icons.Default.Close, contentDescription = "Stop generating", tint = colors.error)
-                        } else {
-                            Icon(imageVector = Icons.Default.Send, contentDescription = "Query", tint = colors.primary)
-                        }
-                    }
-                }
-
-                // AI Study Generator Shortcuts
-                Spacer(modifier = Modifier.height(10.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = {
-                            if (!isAiLoading && courseDocs.isNotEmpty() && currentCourse != null) {
-                                isAiLoading = true
-                                coroutineScope.launch {
-                                    val chunks = courseDocs.flatMap { it.chunks }
-                                    when (val res = aiClient.sendPrompt("Generate 3 key flashcards (Q and A format)", "Create concise flashcards for spaced repetition.", settings, chunks)) {
-                                        is AiResult.Success -> {
-                                            repository.addFlashcard(Flashcard(courseId = selectedCourseId, front = "AI Generated: Core Thesis", back = res.data.take(180)))
-                                            repository.addChatMessage(ChatMessage(sender = "Wingman", text = "Generated Spaced Repetition Flashcards:\n${res.data}", courseId = selectedCourseId))
-                                        }
-                                        is AiResult.Error -> {
-                                            repository.addChatMessage(ChatMessage(sender = "Wingman", text = "Flashcard generation error: ${res.message}", courseId = selectedCourseId))
-                                        }
-                                    }
-                                    isAiLoading = false
-                                }
-                            } else if (courseDocs.isEmpty()) {
-                                Toast.makeText(context, "Import documents first to generate flashcards", Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = colors.textPrimary,
-                            containerColor = colors.surfaceElevated
-                        ),
-                        border = null,
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("+ Flashcards", fontSize = 10.sp, color = colors.textPrimary)
-                    }
-
-                    OutlinedButton(
-                        onClick = {
-                            if (!isAiLoading && courseDocs.isNotEmpty() && currentCourse != null) {
-                                isAiLoading = true
-                                coroutineScope.launch {
-                                    val chunks = courseDocs.flatMap { it.chunks }
-                                    when (val res = aiClient.sendPrompt("Generate an executive study guide and summary.", "Synthesize clear study notes.", settings, chunks)) {
-                                        is AiResult.Success -> {
-                                            repository.addChatMessage(ChatMessage(sender = "Wingman", text = "Executive Study Guide:\n${res.data}", courseId = selectedCourseId))
-                                        }
-                                        is AiResult.Error -> {
-                                            repository.addChatMessage(ChatMessage(sender = "Wingman", text = "Study Guide generation error: ${res.message}", courseId = selectedCourseId))
-                                        }
-                                    }
-                                    isAiLoading = false
-                                }
-                            } else if (courseDocs.isEmpty()) {
-                                Toast.makeText(context, "Import documents first to generate study guide", Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = colors.textPrimary,
-                            containerColor = colors.surfaceElevated
-                        ),
-                        border = null,
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("Study Guide", fontSize = 10.sp, color = colors.textPrimary)
-                    }
-                }
-
                 // Claude-style tabs inside the chat window: the live chat vs
                 // the full history log for this subject.
                 Spacer(modifier = Modifier.height(12.dp))
@@ -907,122 +780,179 @@ fun StudyCompanionScreen(
                 val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
                 val dayFormat = remember { SimpleDateFormat("d MMM", Locale.getDefault()) }
 
-                // One bubble renderer shared by the Chat tab and expanded History sessions.
+                // One renderer shared by the Chat tab and expanded History sessions.
+                // ChatGPT-style: the user's prompt sits in a right-aligned tinted
+                // bubble; Wingman answers render full-bleed with a quiet action row.
                 val chatBubble: @Composable (ChatMessage) -> Unit = { msg ->
-                            val isUser = msg.sender == "You"
-                            Column(
+                    val isUser = msg.sender == "You"
+                    if (isUser) {
+                        Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
+                            Box(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(if (isUser) colors.surface else colors.background)
-                                    .border(1.dp, if (isUser) colors.border else colors.primary.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
-                                    .padding(8.dp)
+                                    .fillMaxWidth(0.86f)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(colors.primary.copy(alpha = 0.14f))
+                                    .border(1.dp, colors.primary.copy(alpha = 0.28f), RoundedCornerShape(16.dp))
+                                    .padding(horizontal = 12.dp, vertical = 8.dp)
                             ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = if (isUser) "You" else "Wingman",
-                                        color = if (isUser) colors.primary else colors.info,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 10.sp
-                                    )
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(
-                                            text = timeFormat.format(Date(msg.timestampMillis)),
-                                            color = colors.textMuted,
-                                            fontSize = 9.sp
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        // Copy — every message, one tap.
-                                        Icon(
-                                            imageVector = Icons.Default.ContentCopy,
-                                            contentDescription = "Copy message",
-                                            tint = colors.textMuted,
-                                            modifier = Modifier
-                                                .size(13.dp)
-                                                .clickable {
-                                                    clipboard.setText(AnnotatedString(msg.text))
-                                                    Toast.makeText(context, "Message copied", Toast.LENGTH_SHORT).show()
-                                                }
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        if (isUser) {
-                                            // Edit & resend: rewinds the chat to
-                                            // just before this question.
-                                            Icon(
-                                                imageVector = Icons.Default.Edit,
-                                                contentDescription = "Edit and resend",
-                                                tint = colors.textMuted,
-                                                modifier = Modifier
-                                                    .size(13.dp)
-                                                    .clickable {
-                                                        repository.deleteChatMessagesFrom(msg.id)
-                                                        aiQuery = msg.text
-                                                        Toast.makeText(context, "Edit your message, then press send", Toast.LENGTH_SHORT).show()
-                                                    }
-                                            )
-                                        } else if (msg.text.startsWith("Could not reach AI")) {
-                                            // Retry a failed request with the same prompt.
-                                            Text(
-                                                text = "Retry",
-                                                color = colors.primary,
-                                                fontSize = 9.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                modifier = Modifier.clickable {
-                                                    val failedPrompt = courseChatMessages.lastOrNull { it.sender == "You" }?.text
-                                                    if (failedPrompt != null) {
-                                                        repository.deleteChatMessagesFrom(msg.id)
-                                                        launchStudyQuery(failedPrompt, null)
-                                                    }
-                                                }
-                                            )
+                                Text(
+                                    text = msg.text,
+                                    color = colors.textPrimary,
+                                    fontSize = 12.sp,
+                                    lineHeight = 17.sp
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = timeFormat.format(Date(msg.timestampMillis)),
+                                    color = colors.textMuted,
+                                    fontSize = 9.sp
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Icon(
+                                    imageVector = Icons.Default.ContentCopy,
+                                    contentDescription = "Copy message",
+                                    tint = colors.textMuted,
+                                    modifier = Modifier
+                                        .size(13.dp)
+                                        .clickable {
+                                            clipboard.setText(AnnotatedString(msg.text))
+                                            Toast.makeText(context, "Message copied", Toast.LENGTH_SHORT).show()
                                         }
-                                    }
-                                }
-                                Spacer(modifier = Modifier.height(4.dp))
-                                if (isUser) {
-                                    Text(
-                                        text = msg.text,
-                                        color = colors.textPrimary,
-                                        fontSize = 11.sp,
-                                        lineHeight = 15.sp
-                                    )
-                                } else {
-                                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        FioMarkdown(
-                                            text = msg.text,
-                                            baseFontSize = 11.sp
-                                        )
-                                        if (msg.aiImagePaths.isNotEmpty()) {
-                                            AiImageStrip(
-                                                paths = msg.aiImagePaths,
-                                                onOpen = { viewingImagePath = it }
-                                            )
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                // Edit & resend: rewinds the chat to just before
+                                // this question.
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = "Edit and resend",
+                                    tint = colors.textMuted,
+                                    modifier = Modifier
+                                        .size(13.dp)
+                                        .clickable {
+                                            repository.deleteChatMessagesFrom(msg.id)
+                                            aiQuery = msg.text
+                                            Toast.makeText(context, "Edit your message, then press send", Toast.LENGTH_SHORT).show()
                                         }
-                                    }
+                                )
+                            }
+                        }
+                    } else {
+                        Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                FioMarkdown(
+                                    text = msg.text,
+                                    baseFontSize = 12.sp
+                                )
+                                if (msg.aiImagePaths.isNotEmpty()) {
+                                    AiImageStrip(
+                                        paths = msg.aiImagePaths,
+                                        onOpen = { viewingImagePath = it }
+                                    )
                                 }
                             }
+                            Spacer(modifier = Modifier.height(5.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = timeFormat.format(Date(msg.timestampMillis)),
+                                    color = colors.textMuted,
+                                    fontSize = 9.sp
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Icon(
+                                    imageVector = Icons.Default.ContentCopy,
+                                    contentDescription = "Copy answer",
+                                    tint = colors.textMuted,
+                                    modifier = Modifier
+                                        .size(13.dp)
+                                        .clickable {
+                                            clipboard.setText(AnnotatedString(msg.text))
+                                            Toast.makeText(context, "Answer copied", Toast.LENGTH_SHORT).show()
+                                        }
+                                )
+                                if (msg.text.startsWith("Could not reach AI")) {
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    // Retry a failed request with the same prompt.
+                                    Text(
+                                        text = "Retry",
+                                        color = colors.primary,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.clickable {
+                                            val failedPrompt = courseChatMessages.lastOrNull { it.sender == "You" }?.text
+                                            if (failedPrompt != null) {
+                                                repository.deleteChatMessagesFrom(msg.id)
+                                                launchStudyQuery(failedPrompt, null)
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
 
                 if (chatTab == 0) {
-                    // --- Chat tab: live rolling context, last 4 messages ---
-                    val recent = courseChatMessages.takeLast(4)
-                    if (recent.isNotEmpty()) {
-                        Column(
-                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            recent.forEach { chatBubble(it) }
+                    // --- Chat tab: the full conversation, ChatGPT-style ---
+                    val chatScroll = rememberScrollState()
+                    LaunchedEffect(chatTab, courseChatMessages.size, courseChatMessages.lastOrNull()?.id) {
+                        withFrameNanos { }
+                        if (courseChatMessages.isNotEmpty()) {
+                            runCatching { chatScroll.animateScrollTo(chatScroll.maxValue) }
                         }
-                    } else {
-                        Text("Ask your first question to start the chat.", color = colors.textMuted, fontSize = 11.sp)
+                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = (LocalConfiguration.current.screenHeightDp * 0.56f).dp)
+                    ) {
+                        if (courseChatMessages.isNotEmpty()) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth().verticalScroll(chatScroll).padding(top = 10.dp, bottom = 2.dp),
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                courseChatMessages.forEach { chatBubble(it) }
+                            }
+                        } else {
+                            Text(
+                                "Ask your first question to start the chat.",
+                                color = colors.textMuted,
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(top = 12.dp)
+                            )
+                        }
+                        // Jump-to-latest pill (ChatGPT-style ↓).
+                        if (courseChatMessages.isNotEmpty() && chatScroll.canScrollForward) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(vertical = 6.dp)
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(colors.surfaceElevated)
+                                    .border(1.dp, colors.border, CircleShape)
+                                    .clickable { coroutineScope.launch { chatScroll.animateScrollTo(chatScroll.maxValue) } },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.KeyboardArrowDown,
+                                    contentDescription = "Scroll to latest",
+                                    tint = colors.textPrimary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
                     }
                 } else {
-                    // --- History tab: past chats grouped into dated sessions ---
-                    if (courseChatMessages.isEmpty()) {
+                    // --- History: past chats grouped into dated sessions ---
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = (LocalConfiguration.current.screenHeightDp * 0.56f).dp)
+                    ) {
+                        val historyScroll = rememberScrollState()
+                        if (courseChatMessages.isEmpty()) {
                         Text("No saved messages yet.", color = colors.textMuted, fontSize = 11.sp)
                     } else {
                         // A new session starts whenever there is a long pause
@@ -1043,7 +973,7 @@ fun StudyCompanionScreen(
                         }
                         var expandedSession by remember { mutableStateOf<String?>(null) }
                         Column(
-                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                            modifier = Modifier.fillMaxWidth().verticalScroll(historyScroll),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             sessions.forEach { session ->
@@ -1141,6 +1071,171 @@ fun StudyCompanionScreen(
                                 }
                             }
                         }
+                    }
+                    }
+                }
+
+                // ChatGPT-style composer, pinned under the conversation.
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(26.dp))
+                            .background(colors.surfaceElevated)
+                            .padding(start = 2.dp, end = 4.dp)
+                            .heightIn(min = 46.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = {
+                                coursePhotoPicker.launch(
+                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                )
+                            },
+                            modifier = Modifier.size(38.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AddPhotoAlternate,
+                                contentDescription = "Attach Image",
+                                tint = if (coursePhotoUri != null) colors.primary else colors.textMuted,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        OutlinedTextField(
+                            value = aiQuery,
+                            onValueChange = { aiQuery = it },
+                            placeholder = {
+                                Text(
+                                    if (currentCourse != null) "Reply to Wingman..." else "Select a subject first...",
+                                    color = colors.textMuted,
+                                    fontSize = 12.sp
+                                )
+                            },
+                            modifier = Modifier.weight(1f).testTag("course_ai_query_input"),
+                            enabled = currentCourse != null,
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color.Transparent,
+                                unfocusedBorderColor = Color.Transparent,
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                                cursorColor = colors.primary,
+                                focusedTextColor = colors.textPrimary,
+                                unfocusedTextColor = colors.textPrimary
+                            )
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    // Circular action: stop while streaming, send otherwise.
+                    IconButton(
+                        onClick = {
+                            if (isAiLoading) {
+                                cancelStudyQuery()
+                            } else if ((aiQuery.isNotBlank() || coursePhotoUri != null) && currentCourse != null) {
+                                val queryText = aiQuery.ifBlank { "Please examine this attached image and explain it in the context of the course material." }
+                                val img = coursePhotoUri
+                                coursePhotoUri = null
+                                launchStudyQuery(queryText, img)
+                            }
+                        },
+                        enabled = currentCourse != null,
+                        modifier = Modifier
+                            .size(46.dp)
+                            .clip(CircleShape)
+                            .background(
+                                when {
+                                    isAiLoading -> colors.primaryContainer
+                                    (aiQuery.isNotBlank() || coursePhotoUri != null) && currentCourse != null -> colors.primary
+                                    else -> colors.surface
+                                }
+                            )
+                            .testTag("course_ai_query_submit")
+                    ) {
+                        if (isAiLoading) {
+                            Icon(imageVector = Icons.Default.Close, contentDescription = "Stop generating", tint = colors.error, modifier = Modifier.size(19.dp))
+                        } else {
+                            val readyToSend = (aiQuery.isNotBlank() || coursePhotoUri != null) && currentCourse != null
+                            Icon(
+                                imageVector = Icons.Default.Send,
+                                contentDescription = "Query",
+                                tint = if (readyToSend) Color.White else colors.textMuted,
+                                modifier = Modifier.size(19.dp)
+                            )
+                        }
+                    }
+                }
+
+                // AI Study Generator Shortcuts
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            if (!isAiLoading && courseDocs.isNotEmpty() && currentCourse != null) {
+                                isAiLoading = true
+                                coroutineScope.launch {
+                                    val chunks = courseDocs.flatMap { it.chunks }
+                                    when (val res = aiClient.sendPrompt("Generate 3 key flashcards (Q and A format)", "Create concise flashcards for spaced repetition.", settings, chunks)) {
+                                        is AiResult.Success -> {
+                                            repository.addFlashcard(Flashcard(courseId = selectedCourseId, front = "AI Generated: Core Thesis", back = res.data.take(180)))
+                                            repository.addChatMessage(ChatMessage(sender = "Wingman", text = "Generated Spaced Repetition Flashcards:\n${res.data}", courseId = selectedCourseId))
+                                        }
+                                        is AiResult.Error -> {
+                                            repository.addChatMessage(ChatMessage(sender = "Wingman", text = "Flashcard generation error: ${res.message}", courseId = selectedCourseId))
+                                        }
+                                    }
+                                    isAiLoading = false
+                                }
+                            } else if (courseDocs.isEmpty()) {
+                                Toast.makeText(context, "Import documents first to generate flashcards", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = colors.textPrimary,
+                            containerColor = colors.surfaceElevated
+                        ),
+                        border = null,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("+ Flashcards", fontSize = 10.sp, color = colors.textPrimary)
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            if (!isAiLoading && courseDocs.isNotEmpty() && currentCourse != null) {
+                                isAiLoading = true
+                                coroutineScope.launch {
+                                    val chunks = courseDocs.flatMap { it.chunks }
+                                    when (val res = aiClient.sendPrompt("Generate an executive study guide and summary.", "Synthesize clear study notes.", settings, chunks)) {
+                                        is AiResult.Success -> {
+                                            repository.addChatMessage(ChatMessage(sender = "Wingman", text = "Executive Study Guide:\n${res.data}", courseId = selectedCourseId))
+                                        }
+                                        is AiResult.Error -> {
+                                            repository.addChatMessage(ChatMessage(sender = "Wingman", text = "Study Guide generation error: ${res.message}", courseId = selectedCourseId))
+                                        }
+                                    }
+                                    isAiLoading = false
+                                }
+                            } else if (courseDocs.isEmpty()) {
+                                Toast.makeText(context, "Import documents first to generate study guide", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = colors.textPrimary,
+                            containerColor = colors.surfaceElevated
+                        ),
+                        border = null,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Study Guide", fontSize = 10.sp, color = colors.textPrimary)
                     }
                 }
             }
