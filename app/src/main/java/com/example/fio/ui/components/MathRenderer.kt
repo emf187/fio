@@ -464,7 +464,7 @@ fun FractionView(
     base: TextUnit,
     modifier: Modifier = Modifier
 ) {
-    val fontSize = ((base.value * 0.86f) * 1.1f).sp
+    val fontSize = ((base.value * 0.86f) * 0.9f).sp
     val px = with(LocalDensity.current) { fontSize.toPx() }
     val argb = colors.textPrimary.toArgb()
     val bmp = remember(num, den, px, argb) {

@@ -260,21 +260,32 @@ private fun RichLine(
     lineHeight: TextUnit? = null
 ) {
     // Standalone math lines: real TeX typesetting via JLaTeXMath — complete
-    // characters, \frac/\sum/\int/fonts, scaled to fit; legacy renderer is the
-    // fallback for anything the engine cannot parse (e.g. mid-stream).
+    // characters, \frac/\sum/\int/fonts. Rendered at its natural size inside a
+    // horizontally scrollable surface: very long equation chains stay fully
+    // readable — swipe sideways to see the end instead of everything shrinking
+    // to fit. Legacy renderer remains the fallback for anything the engine
+    // cannot parse (e.g. mid-stream).
     if (isPureMathParagraph(source)) {
-        val px = with(LocalDensity.current) { (base.value * 1.05f).sp.toPx() }
+        val px = with(LocalDensity.current) { (base.value * 0.88f).sp.toPx() }
         val argb = colors.textPrimary.toArgb()
         val bmp = remember(source, px, argb) { latexBitmap(source.trim(), px, argb) }
         if (bmp != null) {
-            Image(
-                bitmap = bmp,
-                contentDescription = null,
-                contentScale = ContentScale.FillWidth,
+            val (wDp, hDp) = with(LocalDensity.current) { bmp.width.toDp() to bmp.height.toDp() }
+            Box(
                 modifier = modifier
                     .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
                     .padding(vertical = 3.dp)
-            )
+            ) {
+                Image(
+                    bitmap = bmp,
+                    contentDescription = null,
+                    contentScale = ContentScale.FillBounds,
+                    modifier = Modifier
+                        .width(wDp)
+                        .height(hDp)
+                )
+            }
             return
         }
         // TeX parse failed — continue to the classic renderer below.

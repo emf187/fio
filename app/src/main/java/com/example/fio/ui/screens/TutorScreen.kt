@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 package com.example.fio.ui.screens
 
 import android.net.Uri
@@ -7,6 +9,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -85,6 +88,8 @@ fun TutorScreen(
     var hintImages by remember { mutableStateOf<List<String>>(emptyList()) }
     var isHintLoading by remember { mutableStateOf(false) }
     var historyPendingClear by remember { mutableStateOf(false) }
+    // Long-press target: the single practice session to delete.
+    var sessionPendingDelete by remember { mutableStateOf<TutorSession?>(null) }
 
     // Photo picker launcher (Zero-permission Android Photo Picker compliant with Google Play)
     val photoPickerLauncher = rememberLauncherForActivityResult(
@@ -576,7 +581,12 @@ Evaluate this answer. Return ONLY a valid JSON object without markdown fences, w
                 backgroundColor = colors.surface,
                 borderColor = colors.border,
                 padding = PaddingValues(12.dp),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .combinedClickable(
+                        onClick = {},
+                        onLongClick = { sessionPendingDelete = session }
+                    )
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -625,6 +635,35 @@ Evaluate this answer. Return ONLY a valid JSON object without markdown fences, w
             },
             dismissButton = {
                 TextButton(onClick = { historyPendingClear = false }) {
+                    Text("Cancel", color = colors.textMuted)
+                }
+            }
+        )
+    }
+
+    // Confirmation (long-press): delete one graded practice session.
+    sessionPendingDelete?.let { session ->
+        AlertDialog(
+            onDismissRequest = { sessionPendingDelete = null },
+            containerColor = colors.surface,
+            title = { Text("Delete this chat session?", color = colors.textPrimary) },
+            text = {
+                Text(
+                    text = "The practice session from ${formatTimestamp(session.loggedAtMillis)}(graded ${session.aiGrade}) will be permanently deleted. This cannot be undone.",
+                    color = colors.textSecondary
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    repository.deleteTutorSession(session.id)
+                    if (gradingResult?.id == session.id) gradingResult = null
+                    sessionPendingDelete = null
+                }) {
+                    Text("Delete", color = colors.error, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { sessionPendingDelete = null }) {
                     Text("Cancel", color = colors.textMuted)
                 }
             }

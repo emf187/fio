@@ -397,6 +397,13 @@ class FioRepository(private val context: Context) {
         saveAll()
     }
 
+    /** Deletes an explicit set of chat messages (long-press on a history session). */
+    fun deleteChatMessages(ids: Collection<String>) {
+        val toRemove = ids.toSet()
+        _chatHistory.value = _chatHistory.value.filterNot { it.id in toRemove }
+        saveAll()
+    }
+
     // --- Gallery (stored pictures) ---
     fun galleryFile(image: GalleryImage): File = File(galleryDir, image.fileName)
 
@@ -737,6 +744,12 @@ class FioRepository(private val context: Context) {
         _tutorSessions.value = if (courseId != null) {
             _tutorSessions.value.filterNot { it.courseId == courseId }
         } else emptyList()
+        saveAll()
+    }
+
+    /** Deletes a single tutor practice session (long-press on its card). */
+    fun deleteTutorSession(sessionId: String) {
+        _tutorSessions.value = _tutorSessions.value.filterNot { it.id == sessionId }
         saveAll()
     }
 

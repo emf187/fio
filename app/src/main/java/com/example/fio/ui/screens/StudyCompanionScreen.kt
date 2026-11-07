@@ -1,4 +1,6 @@
-﻿package com.example.fio.ui.screens
+﻿@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
+package com.example.fio.ui.screens
 
 import android.net.Uri
 import android.widget.Toast
@@ -8,6 +10,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -160,6 +163,8 @@ fun StudyCompanionScreen(
     var chatTab by remember { mutableStateOf(0) }
     var aiJob by remember { mutableStateOf<Job?>(null) }
     var chatPendingDelete by remember { mutableStateOf(false) }
+    // Long-press target: the history session (list of messages) to delete.
+    var sessionPendingDelete by remember { mutableStateOf<List<ChatMessage>?>(null) }
     val clipboard = LocalClipboardManager.current
     var viewingImagePath by remember { mutableStateOf<String?>(null) }
 
@@ -351,6 +356,34 @@ fun StudyCompanionScreen(
             },
             dismissButton = {
                 TextButton(onClick = { chatPendingDelete = false }) {
+                    Text("Cancel", color = colors.textMuted)
+                }
+            }
+        )
+    }
+
+    // Confirmation (long-press): delete one chat session from the History tab.
+    sessionPendingDelete?.let { messages ->
+        AlertDialog(
+            onDismissRequest = { sessionPendingDelete = null },
+            containerColor = colors.surface,
+            title = { Text("Delete this chat session?", color = colors.textPrimary) },
+            text = {
+                Text(
+                    text = "This conversation (${messages.size} messages) will be permanently deleted. This cannot be undone.",
+                    color = colors.textSecondary
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    repository.deleteChatMessages(messages.map { it.id })
+                    sessionPendingDelete = null
+                }) {
+                    Text("Delete", color = colors.error, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { sessionPendingDelete = null }) {
                     Text("Cancel", color = colors.textMuted)
                 }
             }
@@ -1054,7 +1087,10 @@ fun StudyCompanionScreen(
                                         .clip(RoundedCornerShape(12.dp))
                                         .background(colors.surface)
                                         .border(1.dp, colors.border, RoundedCornerShape(12.dp))
-                                        .clickable { expandedSession = if (isExpanded) null else sessionKey }
+                                        .combinedClickable(
+                                            onClick = { expandedSession = if (isExpanded) null else sessionKey },
+                                            onLongClick = { sessionPendingDelete = session }
+                                        )
                                         .padding(10.dp)
                                 ) {
                                     Row(
