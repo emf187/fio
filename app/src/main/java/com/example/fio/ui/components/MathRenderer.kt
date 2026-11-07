@@ -330,6 +330,7 @@ private val LATEX_SYMBOLS: List<Pair<String, String>> = listOf(
     "\\triangle" to "△", "\\square" to "□",
     // --- delimiters / spacing ---
     "\\lceil" to "⌈", "\\rceil" to "⌉", "\\lfloor" to "⌊", "\\rfloor" to "⌋",
+    "\\ldots" to "…", "\\dots" to "…", "\\cdots" to "⋯", "\\vdots" to "⋮", "\\ddots" to "⋱",
     "\\|" to "‖", "\\{" to "{", "\\}" to "}", "\\%" to "%", "\\$" to "$", "\\_" to "_",
     "\\," to " ", "\\;" to " ", "\\:" to " ", "\\!" to "",
     "\\quad" to " ", "\\qquad" to "  "

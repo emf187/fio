@@ -176,6 +176,12 @@ fun StudyCompanionScreen(
     fun launchStudyQuery(prompt: String, photoUri: Uri?) {
         val activeCourse = currentCourse ?: return
         if (prompt.isBlank() || isAiLoading) return
+        // Per-chat memory: snapshot the thread BEFORE adding this prompt, then
+        // feed it to the model so it has the same conversation visible on
+        // screen (continuity across turns, per subject chat window).
+        val priorThread = chatHistory
+            .filter { it.courseId == activeCourse.id }
+            .takeLast(10)
         isAiLoading = true
         repository.addChatMessage(ChatMessage(sender = "You", text = prompt, courseId = activeCourse.id))
         aiQuery = ""
@@ -187,6 +193,15 @@ fun StudyCompanionScreen(
                     prompt = prompt,
                     systemInstruction = buildString {
                         append("You are Wingman, a precise personal study tutor answering questions based on course material and diagrams. Subject: ${activeCourse.name}. ")
+                        if (priorThread.isNotEmpty()) {
+                            append("\n\nCONVERSATION SO FAR (oldest to newest). Stay consistent with it — refer back to earlier explanations, reuse the same notation and definitions:\n")
+                            priorThread.forEach { m ->
+                                append(if (m.sender == "You") "Student: " else "Wingman: ")
+                                append(m.text.take(1000))
+                                if (m.text.length > 1000) append("…")
+                                append("\n")
+                            }
+                        }
                         append(MATH_RULES)
                         if (settings.showAiImages) append(AiImageHelper.IMAGE_RULE)
                     },
