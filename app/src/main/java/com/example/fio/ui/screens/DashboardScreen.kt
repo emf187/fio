@@ -66,6 +66,9 @@ fun DashboardScreen(
         onResult = { uri -> agentAttachedImageUri = uri }
     )
 
+    // Camera capture for the agent card (shared gallery + camera everywhere).
+    val captureAgentPhoto = rememberCameraCapture { uri -> agentAttachedImageUri = uri }
+
     val pendingSleepStart = remember { repository.getPendingSleepStart() }
     var isSleeping by remember { mutableStateOf(pendingSleepStart != null) }
 
@@ -403,24 +406,20 @@ fun DashboardScreen(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Upload Image Button
-                    IconButton(
-                        onClick = {
+                    // Attach image: gallery or camera.
+                    AttachImageButton(
+                        hasImage = agentAttachedImageUri != null,
+                        onGallery = {
                             agentPhotoPicker.launch(
                                 PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                             )
                         },
+                        onCamera = captureAgentPhoto,
                         modifier = Modifier
                             .clip(RoundedCornerShape(14.dp))
                             .background(colors.surface)
                             .testTag("wingman_upload_image_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.AddPhotoAlternate,
-                            contentDescription = "Upload Image",
-                            tint = if (agentAttachedImageUri != null) colors.primary else colors.textMuted
-                        )
-                    }
+                    )
 
                     Spacer(modifier = Modifier.width(6.dp))
 

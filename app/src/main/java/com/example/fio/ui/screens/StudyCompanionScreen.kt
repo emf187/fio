@@ -49,6 +49,9 @@ import com.example.fio.data.storage.FioRepository
 import com.example.fio.data.storage.ImageStorage
 import com.example.fio.ui.components.AiImageStrip
 import com.example.fio.ui.components.AiImageViewerDialog
+import com.example.fio.ui.components.AttachImageButton
+import com.example.fio.ui.components.rememberCameraCapture
+import com.example.fio.ui.components.saveImageToDevice
 import com.example.fio.ui.components.FioBadge
 import com.example.fio.ui.components.FioCard
 import com.example.fio.ui.components.FioMarkdown
@@ -170,6 +173,7 @@ fun StudyCompanionScreen(
     var sessionPendingDelete by remember { mutableStateOf<List<ChatMessage>?>(null) }
     val clipboard = LocalClipboardManager.current
     var viewingImagePath by remember { mutableStateOf<String?>(null) }
+    var noteSaveImagePath by remember { mutableStateOf<String?>(null) }
 
     // One shared path for the send button, Retry and Edit-and-resend, so the
     // chat behaves like a real LLM conversation from every entry point.
@@ -257,6 +261,9 @@ fun StudyCompanionScreen(
         onResult = { uri -> coursePhotoUri = uri }
     )
 
+    // Camera capture: snaps a photo straight into the chat (shared helper).
+    val captureChatPhoto = rememberCameraCapture { uri -> coursePhotoUri = uri }
+
     // Dialogs
     var showAddCourseDialog by remember { mutableStateOf(false) }
     var showAddDocDialog by remember { mutableStateOf(false) }
@@ -289,7 +296,22 @@ fun StudyCompanionScreen(
 
     // Full-screen viewer for related AI images (chat + history tabs)
     viewingImagePath?.let { path ->
-        AiImageViewerDialog(path = path, onDismiss = { viewingImagePath = null })
+        AiImageViewerDialog(
+            path = path,
+            onDismiss = { viewingImagePath = null },
+            onSaveToDevice = {
+                val ok = saveImageToDevice(context, path)
+                Toast.makeText(
+                    context,
+                    if (ok) "Saved to Pictures/Fio" else "Could not save image",
+                    Toast.LENGTH_SHORT
+                ).show()
+            },
+            onSaveToNote = {
+                viewingImagePath = null
+                noteSaveImagePath = path
+            }
+        )
     }
 
     // Long-press confirmation: remove a document from the library
@@ -402,6 +424,69 @@ fun StudyCompanionScreen(
             },
             dismissButton = {
                 TextButton(onClick = { sessionPendingDelete = null }) {
+                    Text("Cancel", color = colors.textMuted)
+                }
+            }
+        )
+    }
+
+    // Save a related image into an existing note.
+    noteSaveImagePath?.let { imgPath ->
+        val allNotes = repository.notes.value
+        AlertDialog(
+            onDismissRequest = { noteSaveImagePath = null },
+            containerColor = colors.surface,
+            title = { Text("Save image to note", color = colors.textPrimary) },
+            text = {
+                if (allNotes.isEmpty()) {
+                    Text(
+                        "No notes yet. Create one in Notes & Links first.",
+                        color = colors.textSecondary
+                    )
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .heightIn(max = 320.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        allNotes.take(30).forEach { note ->
+                            TextButton(
+                                onClick = {
+                                    repository.saveNote(
+                                        note.copy(
+                                            content = note.content + "\n\n![Image Attachment]($imgPath)",
+                                            imageUris = note.imageUris + imgPath,
+                                            updatedAtMillis = System.currentTimeMillis()
+                                        )
+                                    )
+                                    Toast.makeText(
+                                        context,
+                                        "Saved to \u201c${note.title.ifBlank { "Untitled note" }}\u201d",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                    noteSaveImagePath = null
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = note.title.ifBlank { "Untitled note" },
+                                    color = colors.primary,
+                                    fontSize = 13.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Text("Save", color = colors.textMuted, fontSize = 11.sp)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { noteSaveImagePath = null }) {
                     Text("Cancel", color = colors.textMuted)
                 }
             }
@@ -1105,21 +1190,16 @@ fun StudyCompanionScreen(
                             .heightIn(min = 46.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButton(
-                            onClick = {
+                        AttachImageButton(
+                            hasImage = coursePhotoUri != null,
+                            onGallery = {
                                 coursePhotoPicker.launch(
                                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                                 )
                             },
+                            onCamera = captureChatPhoto,
                             modifier = Modifier.size(38.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.AddPhotoAlternate,
-                                contentDescription = "Attach Image",
-                                tint = if (coursePhotoUri != null) colors.primary else colors.textMuted,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
+                        )
                         OutlinedTextField(
                             value = aiQuery,
                             onValueChange = { aiQuery = it },

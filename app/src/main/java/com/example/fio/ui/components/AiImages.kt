@@ -1,7 +1,11 @@
 package com.example.fio.ui.components
 
+import android.content.ContentValues
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -13,16 +17,20 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.example.fio.ui.theme.LocalFioColors
 import java.io.File
 import kotlin.math.max
 
@@ -62,7 +70,12 @@ fun AiImageStrip(
 
 /** Full-screen tap-to-close viewer for a downloaded related image. */
 @Composable
-fun AiImageViewerDialog(path: String, onDismiss: () -> Unit) {
+fun AiImageViewerDialog(
+    path: String,
+    onDismiss: () -> Unit,
+    onSaveToDevice: (() -> Unit)? = null,
+    onSaveToNote: (() -> Unit)? = null
+) {
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -85,7 +98,60 @@ fun AiImageViewerDialog(path: String, onDismiss: () -> Unit) {
             } else {
                 Box(modifier = Modifier.fillMaxSize())
             }
+            if (onSaveToDevice != null || onSaveToNote != null) {
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 22.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    onSaveToNote?.let { action -> ViewerActionPill("Save to note", action) }
+                    onSaveToDevice?.let { action -> ViewerActionPill("Save to device", action) }
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun ViewerActionPill(label: String, onClick: () -> Unit) {
+    val colors = LocalFioColors.current
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(22.dp))
+            .background(colors.surfaceElevated)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp)
+    ) {
+        Text(text = label, color = colors.textPrimary, fontSize = 13.sp)
+    }
+}
+
+/** Copies a stored image into the device gallery under Pictures/Fio. */
+fun saveImageToDevice(context: android.content.Context, path: String): Boolean {
+    return try {
+        val file = File(path)
+        if (!file.exists()) return false
+        val values = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, "Fio_${System.currentTimeMillis()}.jpg")
+            put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+            if (Build.VERSION.SDK_INT >= 29) {
+                put(
+                    MediaStore.Images.Media.RELATIVE_PATH,
+                    Environment.DIRECTORY_PICTURES + "/Fio"
+                )
+            }
+        }
+        val uri = context.contentResolver.insert(
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            values
+        ) ?: return false
+        context.contentResolver.openOutputStream(uri)?.use { out ->
+            file.inputStream().use { input -> input.copyTo(out) }
+        } ?: return false
+        true
+    } catch (e: Exception) {
+        false
     }
 }
 

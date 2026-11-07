@@ -53,6 +53,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -90,6 +92,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.fio.data.model.GalleryImage
 import com.example.fio.data.storage.FioRepository
+import com.example.fio.ui.components.AttachImageButton
+import com.example.fio.ui.components.rememberCameraCapture
 import com.example.fio.ui.components.FioCard
 import com.example.fio.ui.theme.LocalFioColors
 import kotlinx.coroutines.Dispatchers
@@ -115,6 +119,7 @@ fun GalleryScreen(repository: FioRepository) {
     var actionTarget by remember { mutableStateOf<GalleryImage?>(null) }
     var renameTarget by remember { mutableStateOf<GalleryImage?>(null) }
     var renameInput by remember { mutableStateOf("") }
+    var showAddMenu by remember { mutableStateOf(false) }
 
     val picker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia(25)
@@ -130,6 +135,22 @@ fun GalleryScreen(repository: FioRepository) {
             Toast.makeText(
                 context,
                 if (imported.isEmpty()) "Could not add those photos" else "Added ${imported.size} photo(s)",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    val captureGalleryPhoto = rememberCameraCapture { uri ->
+        isImporting = true
+        scope.launch {
+            val imported = withContext(Dispatchers.IO) {
+                listOfNotNull(copyImageToGallery(context, uri))
+            }
+            repository.addGalleryImages(imported)
+            isImporting = false
+            Toast.makeText(
+                context,
+                if (imported.isEmpty()) "Could not add that photo" else "Added 1 photo",
                 Toast.LENGTH_SHORT
             ).show()
         }
@@ -161,10 +182,9 @@ fun GalleryScreen(repository: FioRepository) {
                     fontSize = 11.sp
                 )
             }
+            Box {
             Button(
-                onClick = {
-                    picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                },
+                onClick = { showAddMenu = true },
                 enabled = !isImporting,
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
@@ -188,6 +208,27 @@ fun GalleryScreen(repository: FioRepository) {
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("Add photos", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                 }
+            }
+            DropdownMenu(
+                expanded = showAddMenu,
+                onDismissRequest = { showAddMenu = false },
+                containerColor = colors.surfaceElevated
+            ) {
+                DropdownMenuItem(
+                    text = { Text("Choose from gallery", color = colors.textPrimary, fontSize = 13.sp) },
+                    onClick = {
+                        showAddMenu = false
+                        picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text("Take a photo", color = colors.textPrimary, fontSize = 13.sp) },
+                    onClick = {
+                        showAddMenu = false
+                        captureGalleryPhoto()
+                    }
+                )
+            }
             }
         }
 

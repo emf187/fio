@@ -58,7 +58,11 @@ fun FioMarkdown(
     modifier: Modifier = Modifier,
     colors: FioCustomColors = LocalFioColors.current
 ) {
-    val blocks = remember(text) { parseBlocks(stripMathDelimiters(joinDisplayMath(text.lines()))) }
+    val blocks = remember(text) {
+        parseBlocks(
+            collapseEscapedCommands(stripMathDelimiters(joinDisplayMath(text.lines())))
+        )
+    }
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         blocks.forEach { block -> BlockView(block, colors, baseFontSize) }
     }
@@ -83,6 +87,27 @@ private val HEADING_REGEX = Regex("""^\s*(#{1,6})\s+(.*)$""")
 private val QUOTE_REGEX = Regex("""^\s*>\s?(.*)$""")
 private val TABLE_ROW_REGEX = Regex("""^\s*\|.*\|\s*$""")
 private val TABLE_SEP_REGEX = Regex("""^\s*\|(\s*:?-{2,}:?\s*\|)+\s*$""")
+
+/**
+ * Models sometimes double-escape LaTeX commands (`\\hat{y}`) while writing
+ * prose. TeX row separators in matrices are followed by whitespace, so only
+ * collapsing `\\` directly before a letter is safe.
+ */
+private val DOUBLE_ESCAPED_CMD = Regex("""\\\\(?=[A-Za-z])""")
+
+private fun collapseEscapedCommands(lines: List<String>): List<String> {
+    var inFence = false
+    return lines.map { line ->
+        when {
+            line.trimStart().startsWith("```") -> {
+                inFence = !inFence
+                line
+            }
+            inFence -> line
+            else -> line.replace(DOUBLE_ESCAPED_CMD, "\\")
+        }
+    }
+}
 
 /**
  * AI models write display math as `$$` on its own line with the equation on
@@ -312,7 +337,7 @@ private fun RichLine(
         // TeX parse failed — continue to the classic renderer below.
     }
 
-    if (hasStackedFraction(source) || hasInlineMathExpr(source)) {
+    if (hasStackedFraction(source) || hasInlineMathExpr(source) || source.contains('\\')) {
         InlineMathText(source, colors, base, fontWeight, lineHeight, modifier)
     } else {
         val annotated = remember(source, colors) { buildFullLinear(source, colors) }
@@ -432,10 +457,10 @@ private fun BlockView(block: Block, colors: FioCustomColors, base: TextUnit) {
                 verticalArrangement = Arrangement.spacedBy(3.dp)
             ) {
                 block.lines.forEach { quoteLine ->
-                    Text(
-                        text = quoteLine,
-                        color = colors.textSecondary,
-                        fontSize = base
+                    RichLine(
+                        source = quoteLine,
+                        colors = colors,
+                        base = base
                     )
                 }
             }

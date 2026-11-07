@@ -31,7 +31,7 @@ import ru.noties.jlatexmath.JLatexMathDrawable
  */
 
 /** Global result cache — one bitmap per (formula, size, color). Bounded. */
-private val latexBitmapCache = object : LruCache<String, ImageBitmap>(64) {
+private val latexBitmapCache = object : LruCache<String, ImageBitmap>(160) {
     override fun sizeOf(key: String, value: ImageBitmap): Int = 1
 }
 
@@ -88,8 +88,11 @@ fun latexBitmap(latex: String, textSizePx: Float, colorArgb: Int): ImageBitmap? 
 /** Maps `\Ω`-style escapes to real TeX commands (`\Omega`). Uppercase Greek
  * letters that have no TeX command use their Latin lookalike instead. */
 private fun normalizeLatexCommands(src: String): String {
+    // Stray doubled backslashes (model markdown escaping) break TeX parsing
+    // unless they are genuine matrix row separators (inside \begin{...}).
+    val deduped = if (src.contains("\\begin{")) src else src.replace("\\\\", "\\")
     val escapedGreek = Regex("""\\([\u0370-\u03FF])""")
-    val replaced = escapedGreek.replace(src) { m ->
+    val replaced = escapedGreek.replace(deduped) { m ->
         when (val c = m.groupValues[1][0]) {
             'α' -> "\\alpha"; 'β' -> "\\beta"; 'γ' -> "\\gamma"; 'δ' -> "\\delta"
             'ε' -> "\\varepsilon"; 'ζ' -> "\\zeta"; 'η' -> "\\eta"; 'θ' -> "\\theta"

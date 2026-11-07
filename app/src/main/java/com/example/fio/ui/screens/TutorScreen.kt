@@ -3,6 +3,7 @@
 package com.example.fio.ui.screens
 
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -13,7 +14,9 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -36,6 +39,9 @@ import com.example.fio.data.storage.FioRepository
 import com.example.fio.data.storage.ImageStorage
 import com.example.fio.ui.components.AiImageStrip
 import com.example.fio.ui.components.AiImageViewerDialog
+import com.example.fio.ui.components.AttachImageButton
+import com.example.fio.ui.components.rememberCameraCapture
+import com.example.fio.ui.components.saveImageToDevice
 import com.example.fio.ui.components.FioBadge
 import com.example.fio.ui.components.FioCard
 import com.example.fio.ui.components.FioDivider
@@ -83,10 +89,12 @@ fun TutorScreen(
 
     // Related images from the AI (same capability as Wingman) + Socratic hint state
     var viewingImagePath by remember { mutableStateOf<String?>(null) }
+    var noteSaveImagePath by remember { mutableStateOf<String?>(null) }
     var questionImages by remember { mutableStateOf<List<String>>(emptyList()) }
     var hintCard by remember { mutableStateOf<String?>(null) }
     var hintImages by remember { mutableStateOf<List<String>>(emptyList()) }
     var isHintLoading by remember { mutableStateOf(false) }
+    var showPhotoMenu by remember { mutableStateOf(false) }
     var historyPendingClear by remember { mutableStateOf(false) }
     // Long-press target: the single practice session to delete.
     var sessionPendingDelete by remember { mutableStateOf<TutorSession?>(null) }
@@ -96,6 +104,9 @@ fun TutorScreen(
         contract = ActivityResultContracts.PickVisualMedia(),
         onResult = { uri -> selectedPhotoUri = uri }
     )
+
+    // Camera capture for the exam-question photo (shared helper).
+    val captureTutorPhoto = rememberCameraCapture { uri -> selectedPhotoUri = uri }
 
     // Collect all weak topics across sessions
     val allWeakTopics = courseSessions.flatMap { it.weakTopics }.distinct()
@@ -246,24 +257,44 @@ fun TutorScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Upload past paper photo
-                    OutlinedButton(
-                        onClick = {
-                            photoPickerLauncher.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                            )
-                        },
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = colors.textSecondary,
+                    // Upload past paper photo: gallery or camera.
+                    Box(modifier = Modifier.weight(1f)) {
+                        OutlinedButton(
+                            onClick = { showPhotoMenu = true },
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = colors.textSecondary,
+                                containerColor = colors.surfaceElevated
+                            ),
+                            border = null,
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth().testTag("upload_past_question_photo")
+                        ) {
+                            Icon(imageVector = Icons.Default.AddPhotoAlternate, contentDescription = null, tint = colors.textSecondary, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Photo", color = colors.textSecondary, fontSize = 11.sp)
+                        }
+                        DropdownMenu(
+                            expanded = showPhotoMenu,
+                            onDismissRequest = { showPhotoMenu = false },
                             containerColor = colors.surfaceElevated
-                        ),
-                        border = null,
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.weight(1f).testTag("upload_past_question_photo")
-                    ) {
-                        Icon(imageVector = Icons.Default.AddPhotoAlternate, contentDescription = null, tint = colors.textSecondary, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Photo", color = colors.textSecondary, fontSize = 11.sp)
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Choose from gallery", color = colors.textPrimary, fontSize = 13.sp) },
+                                onClick = {
+                                    showPhotoMenu = false
+                                    photoPickerLauncher.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                    )
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Take a photo", color = colors.textPrimary, fontSize = 13.sp) },
+                                onClick = {
+                                    showPhotoMenu = false
+                                    captureTutorPhoto()
+                                }
+                            )
+                        }
                     }
 
                     // Socratic hint: nudge without revealing the answer (same image/math capability as Wingman)
@@ -604,7 +635,22 @@ Evaluate this answer. Return ONLY a valid JSON object without markdown fences, w
 
     // Full-screen viewer for related AI images
     viewingImagePath?.let { path ->
-        AiImageViewerDialog(path = path, onDismiss = { viewingImagePath = null })
+        AiImageViewerDialog(
+            path = path,
+            onDismiss = { viewingImagePath = null },
+            onSaveToDevice = {
+                val ok = saveImageToDevice(context, path)
+                Toast.makeText(
+                    context,
+                    if (ok) "Saved to Pictures/Fio" else "Could not save image",
+                    Toast.LENGTH_SHORT
+                ).show()
+            },
+            onSaveToNote = {
+                viewingImagePath = null
+                noteSaveImagePath = path
+            }
+        )
     }
 
     // Confirmation: delete the practice sessions listed under the current subject.
@@ -664,6 +710,69 @@ Evaluate this answer. Return ONLY a valid JSON object without markdown fences, w
             },
             dismissButton = {
                 TextButton(onClick = { sessionPendingDelete = null }) {
+                    Text("Cancel", color = colors.textMuted)
+                }
+            }
+        )
+    }
+
+    // Save a related image into an existing note.
+    noteSaveImagePath?.let { imgPath ->
+        val allNotes = repository.notes.value
+        AlertDialog(
+            onDismissRequest = { noteSaveImagePath = null },
+            containerColor = colors.surface,
+            title = { Text("Save image to note", color = colors.textPrimary) },
+            text = {
+                if (allNotes.isEmpty()) {
+                    Text(
+                        "No notes yet. Create one in Notes & Links first.",
+                        color = colors.textSecondary
+                    )
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .heightIn(max = 320.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        allNotes.take(30).forEach { note ->
+                            TextButton(
+                                onClick = {
+                                    repository.saveNote(
+                                        note.copy(
+                                            content = note.content + "\n\n![Image Attachment]($imgPath)",
+                                            imageUris = note.imageUris + imgPath,
+                                            updatedAtMillis = System.currentTimeMillis()
+                                        )
+                                    )
+                                    Toast.makeText(
+                                        context,
+                                        "Saved to \u201c${note.title.ifBlank { "Untitled note" }}\u201d",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                    noteSaveImagePath = null
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = note.title.ifBlank { "Untitled note" },
+                                    color = colors.primary,
+                                    fontSize = 13.sp,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Text("Save", color = colors.textMuted, fontSize = 11.sp)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { noteSaveImagePath = null }) {
                     Text("Cancel", color = colors.textMuted)
                 }
             }

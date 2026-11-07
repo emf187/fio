@@ -68,15 +68,17 @@ sealed class MathSegment {
 
 /**
  * Inline math run: a base (LaTeX command, 1–3 letters or digits) followed by
- * one or more ^{…}/_{…} scripts. Deliberately conservative so ordinary English
- * words are never mistaken for math.
+ * one or more ^{…}/_{…} scripts — or any lone LaTeX command / escaped symbol.
+ * Scripted expressions go to the engine; commands the tokenizer did not
+ * consume (\alpha, \theta, \cdot, …) do too, so every LaTeX symbol renders
+ * instead of relying on a hand-maintained table.
  */
-internal val INLINE_MATH_EXPR = Regex(
-    """(?:\\[A-Za-z]+|[A-Za-z]{1,3}|[0-9]{1,2})(?:\s*[\^_]\s*(?:\{[^{}]*\}|\\[A-Za-z]+|[A-Za-z0-9]+))+"""
+internal val INLINE_MATH_FRAGMENT = Regex(
+    """(?:\\[A-Za-z]+|[A-Za-z]{1,3}|[0-9]{1,2})(?:\s*[\^_]\s*(?:\{[^{}]*\}|\\[A-Za-z]+|[A-Za-z0-9]+))+|\\(?:[A-Za-z]+|[^A-Za-z])"""
 )
 
-/** True when [source] contains an inline math run worth a TeX bitmap. */
-fun hasInlineMathExpr(source: String): Boolean = INLINE_MATH_EXPR.containsMatchIn(source)
+/** True when [source] contains inline math worth TeX typesetting. */
+fun hasInlineMathExpr(source: String): Boolean = INLINE_MATH_FRAGMENT.containsMatchIn(source)
 
 // ----------------------------------------------------------------- token tree
 
@@ -324,21 +326,27 @@ private val LATEX_SYMBOLS: List<Pair<String, String>> = listOf(
     "\\csc" to "csc", "\\cot" to "cot",
     // --- big operators ---
     "\\coprod" to "∐", "\\prod" to "∏", "\\sum" to "∑", "\\oint" to "∮",
-    "\\int" to "∫", "\\infty" to "∞", "\\hbar" to "ℏ", "\\partial" to "∂", "\\nabla" to "∇",
+    "\\iiint" to "∭", "\\iint" to "∬", "\\int" to "∫", "\\infty" to "∞",
+    "\\hbar" to "ℏ", "\\partial" to "∂", "\\nabla" to "∇",
     // --- binary ops ---
     "\\pm" to "±", "\\mp" to "∓", "\\cdot" to "·", "\\times" to "×", "\\div" to "÷",
     "\\star" to "⋆", "\\circ" to "∘", "\\odot" to "⊙", "\\oplus" to "⊕", "\\ominus" to "⊖",
     "\\otimes" to "⊗", "\\dagger" to "†", "\\ddagger" to "‡",
+    "\\bigcup" to "⋃", "\\bigcap" to "⋂", "\\bigoplus" to "⨁", "\\bigotimes" to "⨂",
+    "\\bigodot" to "⨀", "\\biguplus" to "⨄",
     // --- relations ---
     "\\equiv" to "≡", "\\simeq" to "≃", "\\cong" to "≅", "\\propto" to "∝",
     "\\leq" to "≤", "\\le" to "≤", "\\geq" to "≥", "\\ge" to "≥", "\\neq" to "≠", "\\ne" to "≠",
     "\\approx" to "≈", "\\sim" to "∼",
-    // --- greek (lower + upper) ---
+    // --- greek (lower + upper, complete with variants) ---
     "\\alpha" to "α", "\\beta" to "β", "\\gamma" to "γ", "\\delta" to "δ",
-    "\\epsilon" to "ε", "\\zeta" to "ζ", "\\eta" to "η", "\\iota" to "ι", "\\kappa" to "κ",
+    "\\epsilon" to "ε", "\\varepsilon" to "ε", "\\zeta" to "ζ", "\\eta" to "η",
+    "\\theta" to "θ", "\\vartheta" to "ϑ", "\\iota" to "ι", "\\kappa" to "κ",
     "\\lambda" to "λ", "\\mu" to "μ", "\\nu" to "ν", "\\xi" to "ξ", "\\omicron" to "ο",
-    "\\pi" to "π", "\\rho" to "ρ", "\\sigma" to "σ", "\\tau" to "τ", "\\phi" to "φ",
-    "\\chi" to "χ", "\\psi" to "ψ", "\\omega" to "ω",
+    "\\pi" to "π", "\\varpi" to "ϖ", "\\rho" to "ρ", "\\varrho" to "ϱ",
+    "\\sigma" to "σ", "\\varsigma" to "ς", "\\tau" to "τ", "\\upsilon" to "υ",
+    "\\phi" to "φ", "\\varphi" to "φ", "\\chi" to "χ", "\\psi" to "ψ", "\\omega" to "ω",
+    "\\digamma" to "ϝ",
     "\\Gamma" to "Γ", "\\Delta" to "Δ", "\\Theta" to "Θ", "\\Lambda" to "Λ",
     "\\Xi" to "Ξ", "\\Pi" to "Π", "\\Sigma" to "Σ", "\\Upsilon" to "Υ", "\\Phi" to "Φ",
     "\\Psi" to "Ψ", "\\Omega" to "Ω",
@@ -349,8 +357,17 @@ private val LATEX_SYMBOLS: List<Pair<String, String>> = listOf(
     "\\angle" to "∠", "\\perp" to "⊥", "\\parallel" to "∥", "\\degree" to "°",
     "\\prime" to "′", "\\Re" to "ℜ", "\\Im" to "ℑ", "\\aleph" to "ℵ",
     "\\triangle" to "△", "\\square" to "□",
+    "\\land" to "∧", "\\wedge" to "∧", "\\lor" to "∨", "\\vee" to "∨",
+    "\\neg" to "¬", "\\lnot" to "¬", "\\top" to "⊤", "\\bot" to "⊥",
+    "\\therefore" to "∴", "\\because" to "∵", "\\models" to "⊨",
+    "\\vdash" to "⊢", "\\dashv" to "⊣", "\\nmid" to "∤",
+    "\\mid" to "|", "\\colon" to ":", "\\setminus" to "∖", "\\smallsetminus" to "∖",
+    "\\ell" to "ℓ", "\\eth" to "ð",
+    "\\pmod" to " mod ", "\\bmod" to " mod ", "\\mod" to " mod ",
     // --- delimiters / spacing ---
     "\\lceil" to "⌈", "\\rceil" to "⌉", "\\lfloor" to "⌊", "\\rfloor" to "⌋",
+    "\\langle" to "⟨", "\\rangle" to "⟩", "\\lvert" to "|", "\\rvert" to "|",
+    "\\lVert" to "‖", "\\rVert" to "‖",
     "\\ldots" to "…", "\\dots" to "…", "\\cdots" to "⋯", "\\vdots" to "⋮", "\\ddots" to "⋱",
     "\\|" to "‖", "\\{" to "{", "\\}" to "}", "\\%" to "%", "\\$" to "$", "\\_" to "_",
     "\\," to " ", "\\;" to " ", "\\:" to " ", "\\!" to "",
@@ -361,8 +378,40 @@ private fun substituteSymbols(expr: String): String {
     // Models sometimes emit doubled backslashes (markdown-escaped LaTeX);
     // collapse them so "\Omega" still becomes a glyph instead of leaking raw.
     var out = expr.replace("\\\\", "\\")
+    // Decoration commands are normally consumed by the tokenizer, but after
+    // escaping/merge they can survive at text level — apply them here too so
+    // \hat{y} / \bar{x} never show up literally.
+    out = DECORATE_BRACED.replace(out) { m -> m.groupValues[2] + combiningFor(m.groupValues[1]) }
+    out = DECORATE_BARE.replace(out) { m -> m.groupValues[2] + combiningFor(m.groupValues[1]) }
     for ((cmd, glyph) in LATEX_SYMBOLS) out = out.replace(cmd, glyph)
+    // Catch-all guard: this is the final text sent to the UI, so it must be
+    // impossible for any LaTeX syntax to survive. Unknown macros degrade to
+    // their bare name (never invisible, never a backslash), escapes keep their
+    // visible character. (^ and _ are handled by the script scanner after.)
+    out = UNKNOWN_COMMAND.replace(out) { it.value.removePrefix("\\") }
+    out = ESCAPED_CHAR.replace(out) { it.groupValues[1] }
+    out = out.replace("\\", "")
     return out
+}
+
+private val UNKNOWN_COMMAND = Regex("""\\[A-Za-z]+""")
+private val ESCAPED_CHAR = Regex("""\\(.)""")
+
+private val DECORATE_BRACED = Regex(
+    """\\(hat|bar|tilde|dot|vec|overline|underline|widehat|widetilde)\{([^{}]*)\}"""
+)
+private val DECORATE_BARE = Regex(
+    """\\(hat|bar|tilde|dot|vec|overline|underline)\s+([A-Za-z0-9])"""
+)
+
+private fun combiningFor(cmd: String): Char = when (cmd) {
+    "hat", "widehat" -> '\u0302'
+    "bar", "overline" -> '\u0304'
+    "tilde", "widetilde" -> '\u0303'
+    "dot" -> '\u0307'
+    "vec" -> '\u20d7'
+    "underline" -> '\u0332'
+    else -> '\u0302'
 }
 
 // ------------------------------------------------------------- linear renderer
@@ -439,6 +488,9 @@ private fun appendScripted(scope: AnnotatedString.Builder, expr: String) {
                 i = group.second
                 continue
             }
+            // No argument follows: never print a raw script marker.
+            i++
+            continue
         }
         scope.append(c)
         i++
@@ -627,11 +679,11 @@ private fun buildInlineMathText(
             is Tok.Frac -> addMath("\\frac{${token.num}}{${token.den}}")
             is Tok.Text -> {
                 val text = token.s
-                if (!INLINE_MATH_EXPR.containsMatchIn(text)) {
+                if (!INLINE_MATH_FRAGMENT.containsMatchIn(text)) {
                     appendInlineStyled(builder, text, colors)
                 } else {
                     var last = 0
-                    for (m in INLINE_MATH_EXPR.findAll(text)) {
+                    for (m in INLINE_MATH_FRAGMENT.findAll(text)) {
                         if (m.range.first > last) {
                             appendInlineStyled(builder, text.substring(last, m.range.first), colors)
                         }
@@ -659,7 +711,7 @@ fun buildMathSegments(source: String, colors: FioCustomColors): List<MathSegment
     val segments = mutableListOf<MathSegment>()
     // Inline math runs get their own composables; bold markers would break
     // pairing when a span splits the text, so drop them on math-bearing lines.
-    val hasExpr = INLINE_MATH_EXPR.containsMatchIn(source)
+    val hasExpr = INLINE_MATH_FRAGMENT.containsMatchIn(source)
     val clean = if (hasExpr) source.replace("**", "") else source
     var builder = AnnotatedString.Builder()
     fun flush() {
@@ -675,12 +727,12 @@ fun buildMathSegments(source: String, colors: FioCustomColors): List<MathSegment
             }
             is Tok.Text -> {
                 val text = token.s
-                if (!INLINE_MATH_EXPR.containsMatchIn(text)) {
+                if (!INLINE_MATH_FRAGMENT.containsMatchIn(text)) {
                     appendInlineStyled(builder, text, colors)
                 } else {
                     // Split prose text into plain runs and inline math spans.
                     var last = 0
-                    for (m in INLINE_MATH_EXPR.findAll(text)) {
+                    for (m in INLINE_MATH_FRAGMENT.findAll(text)) {
                         if (m.range.first > last) {
                             appendInlineStyled(builder, text.substring(last, m.range.first), colors)
                             flush()

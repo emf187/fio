@@ -37,6 +37,8 @@ import com.example.fio.data.model.NoteItem
 import com.example.fio.data.model.formatTimestamp
 import com.example.fio.data.storage.FioRepository
 import com.example.fio.data.storage.ImageStorage
+import com.example.fio.ui.components.AttachImageButton
+import com.example.fio.ui.components.rememberCameraCapture
 import com.example.fio.ui.components.FioBadge
 import com.example.fio.ui.components.FioCard
 import com.example.fio.ui.components.FioDivider
@@ -94,25 +96,28 @@ fun NotesScreen(repository: FioRepository) {
         onDispose { pendingNoteSave?.let { repository.saveNote(it) } }
     }
 
-    val photoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia(),
-        onResult = { uri ->
-            editingNote?.let { note ->
-                if (uri != null) {
-                    coroutineScope.launch {
-                        val stored = ImageStorage.processAndStoreImage(context, uri)
-                        val storedPath = stored?.first ?: uri.toString()
-                        val updatedUris = note.imageUris + storedPath
-                        val updatedContent = note.content + "\n\n![Image Attachment]($storedPath)"
-                        val updated = note.copy(imageUris = updatedUris, content = updatedContent)
-                        editingNote = updated
-                        pendingNoteSave = null
-                        repository.saveNote(updated)
-                    }
-                }
+    fun attachNoteImage(uri: Uri) {
+        editingNote?.let { note ->
+            coroutineScope.launch {
+                val stored = ImageStorage.processAndStoreImage(context, uri)
+                val storedPath = stored?.first ?: uri.toString()
+                val updatedUris = note.imageUris + storedPath
+                val updatedContent = note.content + "\n\n![Image Attachment]($storedPath)"
+                val updated = note.copy(imageUris = updatedUris, content = updatedContent)
+                editingNote = updated
+                pendingNoteSave = null
+                repository.saveNote(updated)
             }
         }
+    }
+
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia(),
+        onResult = { uri -> if (uri != null) attachNoteImage(uri) }
     )
+
+    // Camera capture: same pipeline as the gallery picker.
+    val captureNotePhoto = rememberCameraCapture { uri -> attachNoteImage(uri) }
 
     // All distinct tags across notes
     val allTags = remember(notes) {
@@ -186,14 +191,17 @@ fun NotesScreen(repository: FioRepository) {
                         )
                     }
 
-                    // Attach Image
-                    IconButton(onClick = {
-                        photoPickerLauncher.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                        )
-                    }, modifier = Modifier.testTag("attach_image_button")) {
-                        Icon(imageVector = Icons.Default.AttachFile, contentDescription = "Attach Image", tint = colors.textSecondary)
-                    }
+                    // Attach image: gallery or camera.
+                    AttachImageButton(
+                        hasImage = false,
+                        onGallery = {
+                            photoPickerLauncher.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
+                        },
+                        onCamera = captureNotePhoto,
+                        modifier = Modifier.testTag("attach_image_button")
+                    )
 
                     // Delete Note
                     IconButton(onClick = {

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Camera captures written to cache before attaching to a chat. -->
+    <cache-path name="camera" path="camera/" />
+</paths>
