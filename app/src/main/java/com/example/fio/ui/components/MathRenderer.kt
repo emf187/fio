@@ -1,16 +1,20 @@
 package com.example.fio.ui.components
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -20,6 +24,8 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -28,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.BaselineShift
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -55,7 +62,21 @@ import com.example.fio.ui.theme.FioCustomColors
 sealed class MathSegment {
     class Math(val text: AnnotatedString) : MathSegment()
     class Frac(val num: String, val den: String) : MathSegment()
+    /** Inline math run (e.g. `e^{z_j}`) rendered as its own TeX bitmap. */
+    class Expr(val latex: String) : MathSegment()
 }
+
+/**
+ * Inline math run: a base (LaTeX command, 1–3 letters or digits) followed by
+ * one or more ^{…}/_{…} scripts. Deliberately conservative so ordinary English
+ * words are never mistaken for math.
+ */
+internal val INLINE_MATH_EXPR = Regex(
+    """(?:\\[A-Za-z]+|[A-Za-z]{1,3}|[0-9]{1,2})(?:\s*[\^_]\s*(?:\{[^{}]*\}|\\[A-Za-z]+|[A-Za-z0-9]+))+"""
+)
+
+/** True when [source] contains an inline math run worth a TeX bitmap. */
+fun hasInlineMathExpr(source: String): Boolean = INLINE_MATH_EXPR.containsMatchIn(source)
 
 // ----------------------------------------------------------------- token tree
 
@@ -411,7 +432,9 @@ private fun appendScripted(scope: AnnotatedString.Builder, expr: String) {
                         baselineShift = if (c == '^') BaselineShift.Superscript else BaselineShift.Subscript
                     )
                 )
-                scope.append(group.first)
+                // Recurse so nested scripts / commands inside the group
+                // (e.g. e^{z_j}) never leak raw underscores or backslashes.
+                appendScripted(scope, group.first)
                 scope.pop()
                 i = group.second
                 continue
@@ -525,6 +548,106 @@ private fun LegacyFractionView(
     }
 }
 
+// ---------------------------------------------------------------- inline math
+
+/**
+ * Paragraph text where math fragments flow *inside* the line as TeX bitmaps —
+ * ChatGPT-style. Only the formula is typeset; prose keeps natural word spacing
+ * and wrapping. Bold markers are dropped on these lines because splitting the
+ * text at math boundaries would break markdown pairing.
+ */
+@Composable
+internal fun InlineMathText(
+    source: String,
+    colors: FioCustomColors,
+    base: TextUnit,
+    fontWeight: FontWeight? = null,
+    lineHeight: TextUnit? = null,
+    modifier: Modifier = Modifier
+) {
+    val density = LocalDensity.current
+    val px = with(density) { (base.value * 1.08f).sp.toPx() }
+    val argb = colors.textPrimary.toArgb()
+    val (annotated, inlineContent) = remember(source, colors, px) {
+        buildInlineMathText(source, colors, base, px, argb, density)
+    }
+    Text(
+        text = annotated,
+        color = colors.textPrimary,
+        fontSize = base,
+        fontWeight = fontWeight,
+        lineHeight = lineHeight ?: TextUnit.Unspecified,
+        inlineContent = inlineContent,
+        modifier = modifier
+    )
+}
+
+private fun buildInlineMathText(
+    source: String,
+    colors: FioCustomColors,
+    base: TextUnit,
+    px: Float,
+    argb: Int,
+    density: Density
+): Pair<AnnotatedString, Map<String, InlineTextContent>> {
+    val clean = source.replace("**", "")
+    val builder = AnnotatedString.Builder()
+    val inline = mutableMapOf<String, InlineTextContent>()
+    var nextId = 0
+
+    fun addMath(latex: String) {
+        val bmp = latexBitmap(latex, px, argb)
+        if (bmp == null) {
+            // Engine rejected the fragment: show readable glyphs instead.
+            builder.append(buildFullLinear(latex, colors))
+            return
+        }
+        val key = "fio_math_${nextId++}"
+        val w = with(density) { bmp.width.toFloat().toSp() }
+        val h = with(density) { bmp.height.toFloat().toSp() }
+        inline[key] = InlineTextContent(
+            placeholder = Placeholder(
+                width = w,
+                height = h,
+                placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter
+            )
+        ) { _ ->
+            Image(
+                bitmap = bmp,
+                contentDescription = null,
+                contentScale = ContentScale.FillBounds,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+        builder.appendInlineContent(key, latex)
+    }
+
+    for (token in tokenize(clean)) {
+        when (token) {
+            is Tok.Frac -> addMath("\\frac{${token.num}}{${token.den}}")
+            is Tok.Text -> {
+                val text = token.s
+                if (!INLINE_MATH_EXPR.containsMatchIn(text)) {
+                    appendInlineStyled(builder, text, colors)
+                } else {
+                    var last = 0
+                    for (m in INLINE_MATH_EXPR.findAll(text)) {
+                        if (m.range.first > last) {
+                            appendInlineStyled(builder, text.substring(last, m.range.first), colors)
+                        }
+                        addMath(m.value.trim())
+                        last = m.range.last + 1
+                    }
+                    if (last < text.length) appendInlineStyled(builder, text.substring(last), colors)
+                }
+            }
+            is Tok.TextCmd -> appendScripted(builder, token.s)
+            is Tok.Sqrt, is Tok.Decorated -> appendTokensLinear(builder, listOf(token), colors)
+        }
+    }
+    return builder.toAnnotatedString() to inline
+}
+
 // --------------------------------------------------------------- rich builder
 
 /**
@@ -534,19 +657,40 @@ private fun LegacyFractionView(
  */
 fun buildMathSegments(source: String, colors: FioCustomColors): List<MathSegment> {
     val segments = mutableListOf<MathSegment>()
+    // Inline math runs get their own composables; bold markers would break
+    // pairing when a span splits the text, so drop them on math-bearing lines.
+    val hasExpr = INLINE_MATH_EXPR.containsMatchIn(source)
+    val clean = if (hasExpr) source.replace("**", "") else source
     var builder = AnnotatedString.Builder()
     fun flush() {
         val built = builder.toAnnotatedString()
         if (built.text.isNotEmpty()) segments.add(MathSegment.Math(built))
         builder = AnnotatedString.Builder()
     }
-    for (token in tokenize(source)) {
+    for (token in tokenize(clean)) {
         when (token) {
             is Tok.Frac -> {
                 flush()
                 segments.add(MathSegment.Frac(token.num, token.den))
             }
-            is Tok.Text -> appendInlineStyled(builder, token.s, colors)
+            is Tok.Text -> {
+                val text = token.s
+                if (!INLINE_MATH_EXPR.containsMatchIn(text)) {
+                    appendInlineStyled(builder, text, colors)
+                } else {
+                    // Split prose text into plain runs and inline math spans.
+                    var last = 0
+                    for (m in INLINE_MATH_EXPR.findAll(text)) {
+                        if (m.range.first > last) {
+                            appendInlineStyled(builder, text.substring(last, m.range.first), colors)
+                            flush()
+                        }
+                        segments.add(MathSegment.Expr(m.value.trim()))
+                        last = m.range.last + 1
+                    }
+                    if (last < text.length) appendInlineStyled(builder, text.substring(last), colors)
+                }
+            }
             is Tok.TextCmd -> appendScripted(builder, token.s)
             is Tok.Sqrt, is Tok.Decorated -> appendTokensLinear(builder, listOf(token), colors)
         }

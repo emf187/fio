@@ -4,6 +4,9 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.util.LruCache
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -12,7 +15,9 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
+import com.example.fio.ui.theme.FioCustomColors
 import com.example.fio.ui.theme.LocalFioColors
 import ru.noties.jlatexmath.JLatexMathDrawable
 
@@ -110,12 +115,21 @@ private fun normalizeLatexCommands(src: String): String {
 fun isPureMathParagraph(source: String): Boolean {
     val t = source.trim()
     if (t.isEmpty() || t.length > 400) return false
+    // Prose that merely CONTAINS math must never be typeset wholesale: in TeX
+    // math mode words lose their spacing ("gtheoutputinto..."). List items,
+    // bold spans, inline code and long \text{…} prose stay on the text path.
+    if (LIST_ITEM_START.containsMatchIn(t)) return false
+    if (t.contains("**") || t.contains('`')) return false
+    if (LONG_TEXT_CMD.containsMatchIn(t)) return false
     // Our custom student fraction syntaxes are not valid LaTeX for the engine.
     if (t.contains("frac((") || t.contains("frac (") || t.contains("frac(")) return false
     if (LATEX_DISPLAY_CMD.containsMatchIn(t)) return true
     // Short bare equations like `2 + 2 = 4` or `x = 3x^2 - 7` render nicely too.
     return t.contains(Regex("[=<>]")) && t.split(Regex("\\s+")).size <= 14
 }
+
+private val LIST_ITEM_START = Regex("""^\s*(?:[-*+]|\d{1,2}[.)])\s""")
+private val LONG_TEXT_CMD = Regex("""\\text\{[^{}]{25,}\}""")
 
 private val LATEX_DISPLAY_CMD = Regex(
     """\\(frac|dfrac|tfrac|cfrac|sqrt|sum|int|prod|lim|binom|begin|vec|overline|underline|widehat|hat|overrightarrow|left|right)"""
@@ -166,4 +180,37 @@ internal fun LatexMathImage(
         fillWidth = fillWidth,
         fallback = fallback
     )
+}
+
+/**
+ * One inline math run (e.g. `e^{z_j}`, `x_{i+1}`) typeset by the TeX engine at
+ * text size inside a prose paragraph. Falls back to the glyph renderer when
+ * the formula cannot be parsed, so nothing ever leaks raw.
+ */
+@Composable
+internal fun InlineMathView(
+    latex: String,
+    colors: FioCustomColors,
+    base: TextUnit,
+    modifier: Modifier = Modifier
+) {
+    val px = with(LocalDensity.current) { (base.value * 1.08f).sp.toPx() }
+    val argb = colors.textPrimary.toArgb()
+    val bmp = remember(latex, px, argb) { latexBitmap(latex, px, argb) }
+    if (bmp != null) {
+        val (wDp, hDp) = with(LocalDensity.current) { bmp.width.toDp() to bmp.height.toDp() }
+        Image(
+            bitmap = bmp,
+            contentDescription = null,
+            contentScale = ContentScale.FillBounds,
+            modifier = modifier.width(wDp).height(hDp)
+        )
+    } else {
+        Text(
+            text = remember(latex, colors) { buildFullLinear(latex, colors) },
+            color = colors.textPrimary,
+            fontSize = base,
+            modifier = modifier
+        )
+    }
 }

@@ -312,8 +312,8 @@ private fun RichLine(
         // TeX parse failed — continue to the classic renderer below.
     }
 
-    if (hasStackedFraction(source)) {
-        MathFlowRow(source, colors, base, fontWeight, lineHeight, modifier)
+    if (hasStackedFraction(source) || hasInlineMathExpr(source)) {
+        InlineMathText(source, colors, base, fontWeight, lineHeight, modifier)
     } else {
         val annotated = remember(source, colors) { buildFullLinear(source, colors) }
         Text(
@@ -356,6 +356,12 @@ private fun MathFlowRow(
                 is MathSegment.Frac -> FractionView(
                     num = segment.num,
                     den = segment.den,
+                    colors = colors,
+                    base = base,
+                    modifier = Modifier.align(Alignment.CenterVertically)
+                )
+                is MathSegment.Expr -> InlineMathView(
+                    latex = segment.latex,
                     colors = colors,
                     base = base,
                     modifier = Modifier.align(Alignment.CenterVertically)
