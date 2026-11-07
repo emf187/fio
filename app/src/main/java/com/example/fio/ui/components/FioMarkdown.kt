@@ -53,7 +53,7 @@ fun FioMarkdown(
     modifier: Modifier = Modifier,
     colors: FioCustomColors = LocalFioColors.current
 ) {
-    val blocks = remember(text) { parseBlocks(joinDisplayMath(text.lines())) }
+    val blocks = remember(text) { parseBlocks(stripMathDelimiters(joinDisplayMath(text.lines()))) }
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         blocks.forEach { block -> BlockView(block, colors, baseFontSize) }
     }
@@ -112,6 +112,24 @@ private fun joinDisplayMath(all: List<String>): List<String> {
     }
     if (open) out += "$$ $body $$".trim() // half-streamed block: show content
     return out
+}
+
+/**
+ * Globally removes LaTeX math delimiters while keeping their contents:
+ * `$$…$$`, `$…$`, `\(…\)` and `\[…\]`. The tokenizer renders bare LaTeX
+ * identically, so stripping the wrappers here guarantees no dollar sign can
+ * ever leak into any block type (paragraphs, headings, quotes, tables) —
+ * pairing in the inline scanner otherwise fails when a match spans lines in
+ * streaming text. Escaped dollars (\$) are preserved literally.
+ */
+private fun stripMathDelimiters(lines: List<String>): List<String> {
+    val guard = "\u0000"
+    var text = lines.joinToString("\n").replace("\\$", guard)
+    text = Regex("""\\\[([\s\S]*?)\\\]""").replace(text) { it.groupValues[1] }
+    text = Regex("""\\\(([\s\S]*?)\\\)""").replace(text) { it.groupValues[1] }
+    text = Regex("""\$\$([\s\S]*?)\$\$""").replace(text) { it.groupValues[1] }
+    text = Regex("""\$([^\$\n]*?)\$""").replace(text) { it.groupValues[1].trim() }
+    return text.replace(guard, "$").split("\n")
 }
 
 private fun parseBlocks(all: List<String>): List<Block> {
