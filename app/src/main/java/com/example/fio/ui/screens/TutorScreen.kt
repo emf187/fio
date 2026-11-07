@@ -167,9 +167,10 @@ fun TutorScreen(
                                     )) {
                                         is AiResult.Success -> {
                                             val (clean, imageQuery) = AiImageHelper.extractImageQuery(res.data)
-                                            questionImages = if (imageQuery != null && settings.showAiImages) {
+                                            questionImages = if (settings.showAiImages) {
+                                                val q = AiImageHelper.effectiveImageQuery(imageQuery, clean)
                                                 runCatching {
-                                                    AiImageHelper.fetchRelatedImages(context, imageQuery, 2)
+                                                    AiImageHelper.fetchRelatedImages(context, q, 2, clean)
                                                 }.getOrDefault(emptyList<AiImageHelper.AiImage>())
                                                     .map { it.localPath }
                                             } else emptyList()
@@ -288,9 +289,10 @@ fun TutorScreen(
                                         is AiResult.Success -> {
                                             val (clean, imageQuery) = AiImageHelper.extractImageQuery(res.data)
                                             hintCard = clean.trim()
-                                            hintImages = if (imageQuery != null && settings.showAiImages) {
+                                            hintImages = if (settings.showAiImages) {
+                                                val q = AiImageHelper.effectiveImageQuery(imageQuery, clean)
                                                 runCatching {
-                                                    AiImageHelper.fetchRelatedImages(context, imageQuery, 1)
+                                                    AiImageHelper.fetchRelatedImages(context, q, 1, clean)
                                                 }.getOrDefault(emptyList<AiImageHelper.AiImage>())
                                                     .map { it.localPath }
                                             } else emptyList()

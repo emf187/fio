@@ -189,9 +189,10 @@ fun StudyCompanionScreen(
                         // Strip the [IMG: …] marker and, when the model asked for one
                         // and images are enabled, fetch 1-2 related pictures from the web.
                         val (clean, imageQuery) = AiImageHelper.extractImageQuery(res.data)
-                        val images = if (imageQuery != null && settings.showAiImages) {
+                        val images = if (settings.showAiImages) {
                             try {
-                                AiImageHelper.fetchRelatedImages(context, imageQuery, 2)
+                                val q = AiImageHelper.effectiveImageQuery(imageQuery, clean)
+                                AiImageHelper.fetchRelatedImages(context, q, 2, clean)
                             } catch (e: Exception) { emptyList() }
                         } else emptyList()
                         repository.addChatMessage(

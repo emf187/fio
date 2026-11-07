@@ -39,6 +39,73 @@ object AiImageHelper {
         RegexOption.IGNORE_CASE
     )
 
+    /** Words too generic to search on their own. */
+    private val SEARCH_STOPWORDS = setOf(
+        "the", "and", "for", "you", "your", "this", "that", "with", "what", "why",
+        "how", "when", "where", "does", "did", "can", "could", "would", "should",
+        "explain", "tell", "about", "give", "show", "me", "please", "need", "want",
+        "using", "example", "means", "mean", "called", "used", "there", "they",
+        "them", "from", "have", "has", "will", "just", "also", "into", "then",
+        "than", "very", "much", "more", "most", "some", "each", "every", "not",
+        "but", "out", "let", "get", "made", "make", "many", "first", "use", "none",
+        "which", "these", "those", "been", "being", "between", "because", "onto",
+        "step", "steps", "solution", "final", "answer", "question", "find",
+        "calculate", "compute", "write", "note", "hint", "detail", "given",
+        "picture", "image", "something", "anything", "words", "word", "topic",
+        "subject", "concept", "terms", "term", "things", "things", "etc"
+    )
+
+    /**
+     * Builds a refined image-search query from free text (question or answer):
+     * content words only, original order kept, first [limit] words. E.g.
+     * "explain the sigmoid function and show its graph" -> "sigmoid function graph".
+     */
+    fun deriveImageQuery(text: String?, limit: Int = 4): String? {
+        if (text.isNullOrBlank()) return null
+        val words = text.lowercase()
+            .split(Regex("[^a-z0-9]+"))
+            .filter { it.length in 3..20 && !it.any(Char::isDigit) && it !in SEARCH_STOPWORDS }
+        val redone = LinkedHashSet(words).take(limit).joinToString(" ")
+        return redone.takeIf { it.isNotBlank() }
+    }
+
+    /** Drops filler words from a model-provided `[IMG: …]` query. */
+    private fun refineMarkerQuery(query: String): String? {
+        val words = query.trim().split(Regex("\\s+"))
+        if (words.isEmpty()) return null
+        val kept = words.filter { it.lowercase().removeSuffix("s") !in SEARCH_STOPWORDS }
+        return (kept.ifEmpty { words }).joinToString(" ")
+    }
+
+    /** Answer text containing one of these words is worth illustrating. */
+    private val VISUAL_CUES = listOf(
+        "graph", "diagram", "figure", "map", "cycle", "anatomy", "cell",
+        "curve", "plot", "chart", "skeleton", "organ", "vector", "circuit",
+        "plant", "animal", "structure", "histology", "wave", "cross-section",
+        "illustration", "drawing", "diagrammatic", "photo", "sketch"
+    )
+
+    /**
+     * Resolves the real image-search query for a reply: the model's `[IMG:]`
+     * marker (refined) wins; without one, answers that clearly discuss a
+     * visual (e.g. "the graph of the sigmoid function…") get a keyword query
+     * derived from the reply text itself. Returns null when no image fits.
+     */
+    fun effectiveImageQuery(markerQuery: String?, answerText: String): String? {
+        val marker = markerQuery?.trim()?.takeIf { it.isNotBlank() }
+        if (marker != null) return refineMarkerQuery(marker)
+        if (VISUAL_CUES.any { answerText.lowercase().contains(it) }) {
+            // Keywords come from the sentence that mentions the visual:
+            // "…graph of the sigmoid function…" -> "sigmoid function graph".
+            val sentences = answerText.split(Regex("(?<=[.!?])\\s+|\\n"))
+            val cueSentence = sentences.firstOrNull { s ->
+                VISUAL_CUES.any { s.lowercase().contains(it) }
+            } ?: answerText
+            return deriveImageQuery(cueSentence)
+        }
+        return null
+    }
+
     /** Splits `[IMG: …]` marker lines out of a reply. Returns (cleanText, firstQueryOrNull). */
     fun extractImageQuery(text: String): Pair<String, String?> {
         var query: String? = null
@@ -67,47 +134,73 @@ object AiImageHelper {
         "Related-image rule: when the answer is about an abstract concept, object, machine, organism, " +
             "map, structure or diagram that a picture would genuinely clarify, END your reply with " +
             "exactly one line of the form [IMG: 2-4 word image search query]. " +
-            "The query must name the concrete subject of the question " +
-            "(for a question about the human heart write [IMG: human heart anatomy]; " +
-            "for the water cycle write [IMG: water cycle diagram]). " +
+            "Derive the query from the question and your own answer, and make it name the exact " +
+            "visual plus its kind (graph, diagram, map, anatomy, photo): " +
+            "for the graphed sigmoid function write [IMG: graph sigmoid function]; " +
+            "for a question about the human heart write [IMG: human heart anatomy]. " +
             "Never use a school subject alone such as math, chemistry, physics or history " +
-            "as the query, and never search for a formula or calculation. " +
+            "as the query, and never search for a formula or a bare calculation. " +
             "Do not add the marker for definitions, calculations, advice, list steps or anything purely textual. " +
             "Never more than one marker. "
 
     /**
-     * Fetches up to [count] thumbnails for [query]. DuckDuckGo first; falls back
-     * to Wikimedia Commons. Returns whatever downloaded successfully.
+     * Fetches up to [count] thumbnails for a query. DuckDuckGo first; falls back
+     * to Wikimedia Commons. [fallbackText] (the bot's answer, or the question)
+     * is used to derive a refined keyword query when the model gave none.
+     * Candidates are ranked by title-keyword overlap, and watermarked stock /
+     * non-photo files are blocked, so results stay on-topic.
      */
     suspend fun fetchRelatedImages(
         context: Context,
-        query: String,
-        count: Int = 2
+        query: String?,
+        count: Int = 2,
+        fallbackText: String? = null
     ): List<AiImage> = withContext(Dispatchers.IO) {
-        val q = query.trim()
+        val q = (query?.let { refineMarkerQuery(it) } ?: deriveImageQuery(fallbackText))?.trim() ?: ""
         if (q.isBlank()) return@withContext emptyList()
         val urlCandidates = duckduckgo(q)
-        val combined = (urlCandidates + wikimedia(q)).filter { it.second.isNotBlank() }
+        val combined = (urlCandidates + wikimedia(q)).filter { (_, url) -> url.isNotBlank() }
+        val qWords = q.lowercase()
+            .split(Regex("[^a-z0-9]+"))
+            .filter { it.length >= 3 }
+            .toSet()
+        fun overlapScore(title: String): Int {
+            if (qWords.isEmpty()) return 1
+            val tWords = title.lowercase().split(Regex("[^a-z0-9]+")).toSet()
+            return qWords.count { w -> w in tWords || tWords.any { it.startsWith(w) } }
+        }
+        // Rank: strongest title relevance first (stable sort keeps provider order on ties).
+        val ranked = combined
+            .map { (title, url) -> Triple(title, url, overlapScore(title)) }
+            .filter { (_, _, score) -> qWords.isEmpty() || score > 0 }
+            .sortedByDescending { it.third }
+            .map { (title, url, _) -> title to url }
         val saved = mutableListOf<AiImage>()
         val seen = HashSet<String>()
-        // Drop results whose title shares nothing with the query — keeps
-        // generic drift (unrelated stock images) out of the answer.
-        val qWords = q.lowercase().split(Regex("[^a-z0-9]+")).filter { it.length >= 3 }.toSet()
-        for ((title, imageUrl) in combined) {
+        for ((title, imageUrl) in ranked) {
             if (saved.size >= count) break
             if (!seen.add(imageUrl)) continue
-            if (qWords.isNotEmpty()) {
-                val tWords = title.lowercase().split(Regex("[^a-z0-9]+")).toSet()
-                val relevant = tWords.any { it in qWords } ||
-                    qWords.any { w -> tWords.any { it.startsWith(w) } }
-                if (!relevant) continue
-            }
+            val hay = (title + "|" + imageUrl).lowercase()
+            if (STOCK_HOSTS.any { hay.contains(it) }) continue
+            if (NON_PHOTO_EXTENSIONS.any { imageUrl.lowercase().contains(it) }) continue
             val key = md5(q + "|" + imageUrl)
             val path = downloadAndStore(context, imageUrl, "ai_$key.jpg")
             if (path != null) saved.add(AiImage(path, imageUrl, title))
         }
         saved
     }
+
+    /** Watermarked paid-stock sites are useless as on-topic illustrations. */
+    private val STOCK_HOSTS = listOf(
+        "shutterstock", "istockphoto", "gettyimages", "alamy", "dreamstime",
+        "depositphotos", "123rf", "canstockphoto", "bigstock", "freeimages",
+        "vecteezy", "colourbox"
+    )
+
+    /** Drawings/animation file formats make poor photo results. */
+    private val NON_PHOTO_EXTENSIONS = listOf(
+        ".svg", ".gif", ".webm", ".mp4", ".wmf", ".emf", ".djvu", ".pdf"
+    )
 
     // --- providers ------------------------------------------------------------
 
