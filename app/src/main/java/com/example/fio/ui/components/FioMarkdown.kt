@@ -59,7 +59,7 @@ fun FioMarkdown(
     colors: FioCustomColors = LocalFioColors.current
 ) {
     val blocks = remember(text) { parseBlocks(stripMathDelimiters(joinDisplayMath(text.lines()))) }
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         blocks.forEach { block -> BlockView(block, colors, baseFontSize) }
     }
 }
@@ -276,7 +276,7 @@ private fun RichLine(
             Column(
                 modifier = modifier
                     .fillMaxWidth()
-                    .padding(vertical = 8.dp),
+                    .padding(vertical = 14.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 if (wDp >= screenW * 0.92f) {
@@ -340,8 +340,8 @@ private fun MathFlowRow(
     val segments = remember(source, colors) { buildMathSegments(source, colors) }
     FlowRow(
         modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalArrangement = Arrangement.spacedBy(5.dp)
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         segments.forEach { segment ->
             when (segment) {

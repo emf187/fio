@@ -39,7 +39,7 @@ fun latexBitmap(latex: String, textSizePx: Float, colorArgb: Int): ImageBitmap? 
     val key = "$latex\u0001${textSizePx.toInt()}\u0001$colorArgb"
     latexBitmapCache.get(key)?.let { return it }
     return try {
-        val drawable = JLatexMathDrawable.builder(latex)
+        val drawable = JLatexMathDrawable.builder(normalizeLatexCommands(latex))
             .textSize(textSizePx)
             .color(colorArgb)
             .align(JLatexMathDrawable.ALIGN_LEFT)
@@ -54,11 +54,51 @@ fun latexBitmap(latex: String, textSizePx: Float, colorArgb: Int): ImageBitmap? 
         val canvas = Canvas(bmp)
         drawable.setBounds(0, 0, bw, bh)
         drawable.draw(canvas)
+        // Blank-render guard: some unsupported macro forms make the engine
+        // produce an (almost) empty bitmap. Treat that as a parse failure so
+        // callers fall back to the text renderer (visible glyphs) instead of
+        // rendering blank space where a symbol should be.
+        val step = 7
+        var ink = 0
+        var sampled = 0
+        var x = 0
+        while (x < bw) {
+            var y = 0
+            while (y < bh) {
+                if ((bmp.getPixel(x, y) ushr 24) > 8) ink++
+                sampled++
+                y += step
+            }
+            x += step
+        }
+        if (sampled == 0 || ink * 200 < sampled) return null
         val result = bmp.asImageBitmap()
         latexBitmapCache.put(key, result)
         result
     } catch (e: Throwable) {
         null // ParseException or OOM — caller falls back to the text renderer
+    }
+}
+
+/** Maps `\Ω`-style escapes to real TeX commands (`\Omega`). Uppercase Greek
+ * letters that have no TeX command use their Latin lookalike instead. */
+private fun normalizeLatexCommands(src: String): String {
+    val escapedGreek = Regex("""\\([\u0370-\u03FF])""")
+    return escapedGreek.replace(src) { m ->
+        when (val c = m.groupValues[1][0]) {
+            'α' -> "\\alpha"; 'β' -> "\\beta"; 'γ' -> "\\gamma"; 'δ' -> "\\delta"
+            'ε' -> "\\varepsilon"; 'ζ' -> "\\zeta"; 'η' -> "\\eta"; 'θ' -> "\\theta"
+            'ι' -> "\\iota"; 'κ' -> "\\kappa"; 'λ' -> "\\lambda"; 'μ' -> "\\mu"
+            'ν' -> "\\nu"; 'ξ' -> "\\xi"; 'ο' -> "\\omicron"; 'π' -> "\\pi"
+            'ρ' -> "\\rho"; 'ς' -> "\\varsigma"; 'σ' -> "\\sigma"; 'τ' -> "\\tau"
+            'υ' -> "\\upsilon"; 'φ' -> "\\varphi"; 'χ' -> "\\chi"; 'ψ' -> "\\psi"; 'ω' -> "\\omega"
+            'Γ' -> "\\Gamma"; 'Δ' -> "\\Delta"; 'Θ' -> "\\Theta"; 'Λ' -> "\\Lambda"
+            'Ξ' -> "\\Xi"; 'Π' -> "\\Pi"; 'Σ' -> "\\Sigma"; 'Υ' -> "\\Upsilon"
+            'Φ' -> "\\Phi"; 'Ψ' -> "\\Psi"; 'Ω' -> "\\Omega"
+            'Α' -> "A"; 'Β' -> "B"; 'Ε' -> "E"; 'Ζ' -> "Z"; 'Η' -> "H"; 'Ι' -> "I"
+            'Κ' -> "K"; 'Μ' -> "M"; 'Ν' -> "N"; 'Ο' -> "O"; 'Ρ' -> "P"; 'Τ' -> "T"; 'Χ' -> "X"
+            else -> c.toString()
+        }
     }
 }
 

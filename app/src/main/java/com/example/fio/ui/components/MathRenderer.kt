@@ -336,7 +336,9 @@ private val LATEX_SYMBOLS: List<Pair<String, String>> = listOf(
 ).sortedByDescending { it.first.length }
 
 private fun substituteSymbols(expr: String): String {
-    var out = expr
+    // Models sometimes emit doubled backslashes (markdown-escaped LaTeX);
+    // collapse them so "\Omega" still becomes a glyph instead of leaking raw.
+    var out = expr.replace("\\\\", "\\")
     for ((cmd, glyph) in LATEX_SYMBOLS) out = out.replace(cmd, glyph)
     return out
 }
