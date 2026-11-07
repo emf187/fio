@@ -601,7 +601,7 @@ private fun appendInlineStyled(
                     scope.append(c); i++
                 }
             }
-            c == '*' || c == '~' || c == '_' -> {
+            c == '*' || c == '~' || (c == '_' && source.startsWith("__", i)) -> {
                 val marker = when {
                     c == '~' && source.startsWith("~~", i) -> "~~"
                     c == '*' && source.startsWith("***", i) -> "***"
@@ -667,8 +667,20 @@ private fun appendInlineStyled(
                 }
             }
             else -> {
-                scope.append(c)
-                i++
+                // Plain prose: run the full math pipeline (glyph substitution,
+                // ^/_ scripts, \frac, \text{…}) instead of appending raw LaTeX
+                // characters — otherwise "\eta", "z^l" etc. leak into the UI.
+                var j = i + 1
+                while (j < source.length) {
+                    val ch = source[j]
+                    if (ch == '`' || ch == '*' || ch == '~' || ch == '_' || ch == '$') break
+                    if (ch == '\\' && j + 1 < source.length &&
+                        (source[j + 1] == '(' || source[j + 1] == '[')
+                    ) break
+                    j++
+                }
+                appendTokensLinear(scope, tokenize(source.substring(i, j)), colors)
+                i = j
             }
         }
     }
