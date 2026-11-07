@@ -89,7 +89,7 @@ fun latexBitmap(latex: String, textSizePx: Float, colorArgb: Int): ImageBitmap? 
  * letters that have no TeX command use their Latin lookalike instead. */
 private fun normalizeLatexCommands(src: String): String {
     val escapedGreek = Regex("""\\([\u0370-\u03FF])""")
-    return escapedGreek.replace(src) { m ->
+    val replaced = escapedGreek.replace(src) { m ->
         when (val c = m.groupValues[1][0]) {
             'α' -> "\\alpha"; 'β' -> "\\beta"; 'γ' -> "\\gamma"; 'δ' -> "\\delta"
             'ε' -> "\\varepsilon"; 'ζ' -> "\\zeta"; 'η' -> "\\eta"; 'θ' -> "\\theta"
@@ -105,7 +105,15 @@ private fun normalizeLatexCommands(src: String): String {
             else -> c.toString()
         }
     }
+    // Models sometimes drop English words straight into math mode (e.g.
+    // "(for asymmetric matrix A)"); TeX ignores spaces there, producing
+    // "forasymmetricmatrixA". Preserve their intended word gaps explicitly.
+    return LETTER_GAP.replace(replaced) { "\\ " }
 }
+
+/** A space with letters on both sides — an intended word boundary in prose
+ * that the model embedded in math mode. */
+private val LETTER_GAP = Regex("""(?<=[A-Za-z])\s+(?=[A-Za-z])""")
 
 /**
  * True when a line is a standalone math expression worth the big-typography
