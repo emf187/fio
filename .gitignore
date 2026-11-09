@@ -32,3 +32,7 @@ Fio.apk
 # Keys (debug keystore is generated locally)
 *.jks
 my-upload-key.jks
+
+# Local agent/design-skill tooling (not part of the app)
+.agents/
+skills-lock.json
