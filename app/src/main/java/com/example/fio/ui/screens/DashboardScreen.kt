@@ -145,74 +145,36 @@ fun DashboardScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(colors.background)
-            .padding(horizontal = 16.dp),
-        contentPadding = PaddingValues(vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .padding(horizontal = 18.dp),
+        contentPadding = PaddingValues(top = 6.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
-        // --- 0. Profile Banner (Personal Name & Offline Storage) ---
-        item(key = "profile_header_card") {
-            FioCard(
-                backgroundColor = colors.surface,
-                borderColor = colors.border,
-                padding = PaddingValues(14.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onNavigate(FioScreen.SETTINGS) }
-                    .testTag("profile_header_card")
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(42.dp)
-                            .clip(CircleShape)
-                            .background(colors.surfaceElevated)
-                            .border(1.dp, colors.border, CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = profileName.take(1).uppercase().ifEmpty { "F" },
-                            color = colors.textPrimary,
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = if (profileName.isNotBlank()) profileName else "My Dashboard",
-                            color = colors.textPrimary,
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "All books, documents & progress stored offline",
-                            color = colors.textMuted,
-                            fontSize = 11.sp
-                        )
-                    }
-                    IconButton(
-                        onClick = { onNavigate(FioScreen.SETTINGS) },
-                        modifier = Modifier.testTag("edit_profile_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Edit,
-                            contentDescription = "Edit Profile Name in Settings",
-                            tint = colors.textSecondary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
+        // --- 0. Greeting ---
+        item(key = "greeting_header") {
+            val hour = java.time.LocalTime.now().hour
+            val greeting = when {
+                hour < 12 -> "Good morning"
+                hour < 17 -> "Good afternoon"
+                else -> "Good evening"
+            }
+            val firstName = profileName.trim().substringBefore(' ')
+            val today = java.time.LocalDate.now()
+                .format(java.time.format.DateTimeFormatter.ofPattern("EEEE, d MMMM", java.util.Locale.UK))
+            Column(modifier = Modifier.padding(top = 4.dp)) {
+                Text(
+                    text = if (firstName.isBlank()) greeting else "$greeting, $firstName",
+                    style = com.example.fio.ui.theme.FioType.display,
+                    color = colors.textPrimary
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(text = today, style = com.example.fio.ui.theme.FioType.small, color = colors.textMuted)
             }
         }
 
-        // --- 1. Life Score Banner ---
+        // --- 1. Life score ---
         item(key = "life_score_card") {
             FioCard(
                 backgroundColor = colors.surface,
-                borderColor = colors.border,
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { onNavigate(FioScreen.STATS) }
@@ -220,86 +182,67 @@ fun DashboardScreen(
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    verticalAlignment = Alignment.Top
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Today's life score",
+                            style = com.example.fio.ui.theme.FioType.small,
+                            color = colors.textSecondary
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Row(verticalAlignment = Alignment.Bottom) {
                             Text(
-                                text = if (profileName.isNotBlank()) "$profileName's Life Score" else "Today's Life Score",
-                                color = colors.textSecondary,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium
+                                text = "${lifeScore.overallScore}",
+                                color = colors.textPrimary,
+                                fontSize = 44.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                letterSpacing = (-1.2).sp,
+                                lineHeight = 48.sp
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
                             val trendColor = if (lifeScore.trend >= 0) colors.success else colors.error
-                            val trendIcon = if (lifeScore.trend >= 0) Icons.Default.TrendingUp else Icons.Default.TrendingDown
-                            Icon(
-                                imageVector = trendIcon,
-                                contentDescription = null,
-                                tint = trendColor,
-                                modifier = Modifier.size(16.dp)
-                            )
                             Text(
                                 text = "${if (lifeScore.trend >= 0) "+" else ""}${lifeScore.trend}",
                                 color = trendColor,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(bottom = 6.dp)
                             )
                         }
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
+                        com.example.fio.ui.components.FioProgressLine(
+                            fraction = (lifeScore.overallScore / 100f).coerceIn(0f, 1f)
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
                         Text(
                             text = lifeScore.note,
-                            color = colors.textMuted,
-                            fontSize = 11.sp,
-                            lineHeight = 15.sp
-                        )
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .size(54.dp)
-                            .clip(CircleShape)
-                            .background(colors.surfaceElevated)
-                            .border(1.dp, colors.border, CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "${lifeScore.overallScore}",
-                            color = colors.textPrimary,
-                            fontSize = 19.sp,
-                            fontWeight = FontWeight.Bold
+                            style = com.example.fio.ui.theme.FioType.small,
+                            color = colors.textMuted
                         )
                     }
                 }
             }
         }
 
-        // --- 2. Quick Action Bar (Meal, Sleep, Timer) ---
+        // --- 2. Quick actions ---
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedButton(
+                com.example.fio.ui.components.FioSecondaryButton(
+                    text = "I ate",
+                    icon = Icons.Default.Restaurant,
                     onClick = { repository.logMeal("Quick meal") },
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = colors.textPrimary,
-                        containerColor = colors.surfaceElevated
-                    ),
-                    border = null,
-                    shape = RoundedCornerShape(10.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
                     modifier = Modifier
                         .weight(1f)
                         .testTag("quick_meal_button")
-                ) {
-                    Icon(imageVector = Icons.Default.Restaurant, contentDescription = null, tint = colors.textSecondary, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("I Ate", fontSize = 12.sp, maxLines = 1, softWrap = false)
-                }
+                )
 
-                OutlinedButton(
+                com.example.fio.ui.components.FioSecondaryButton(
+                    text = if (isSleeping) "Awake" else "Sleep",
+                    icon = if (isSleeping) Icons.Default.WbSunny else Icons.Default.Bedtime,
                     onClick = {
                         if (isSleeping) {
                             repository.quickSleepAwake()
@@ -309,40 +252,19 @@ fun DashboardScreen(
                             isSleeping = true
                         }
                     },
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = colors.textPrimary,
-                        containerColor = colors.surfaceElevated
-                    ),
-                    border = null,
-                    shape = RoundedCornerShape(10.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
                     modifier = Modifier
-                        .weight(1.2f)
+                        .weight(1f)
                         .testTag("quick_sleep_button")
-                ) {
-                    Icon(
-                        imageVector = if (isSleeping) Icons.Default.WbSunny else Icons.Default.Bedtime,
-                        contentDescription = null,
-                        tint = colors.textSecondary,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(if (isSleeping) "I'm Awake" else "Sleep", fontSize = 12.sp, maxLines = 1, softWrap = false)
-                }
+                )
 
-                Button(
+                com.example.fio.ui.components.FioPrimaryButton(
+                    text = "Focus",
+                    icon = Icons.Default.Timer,
                     onClick = { onNavigate(FioScreen.TIMER) },
-                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
-                    shape = RoundedCornerShape(10.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
                     modifier = Modifier
                         .weight(1f)
                         .testTag("quick_focus_button")
-                ) {
-                    Icon(imageVector = Icons.Default.Timer, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Focus", fontSize = 12.sp, color = Color.White, maxLines = 1, softWrap = false)
-                }
+                )
             }
         }
 
@@ -354,23 +276,20 @@ fun DashboardScreen(
                 padding = PaddingValues(14.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(imageVector = Icons.Default.AutoAwesome, contentDescription = null, tint = colors.primary, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Wingman AI Agent", color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    Text("Ask Wingman", style = com.example.fio.ui.theme.FioType.section, color = colors.textPrimary)
                     Spacer(modifier = Modifier.weight(1f))
                     Box(modifier = Modifier.clickable { onNavigate(FioScreen.SETTINGS) }) {
                         FioBadge(
-                            text = if (settings.aiApiKey.isNotBlank()) "Key Set (Edit)" else "+ Set API Key",
+                            text = if (settings.aiApiKey.isNotBlank()) "Ready" else "Add key",
                             color = if (settings.aiApiKey.isNotBlank()) colors.success else colors.warning
                         )
                     }
                 }
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(3.dp))
                 Text(
-                    text = "Wingman controls the whole app: schedule events, log meals, record sleep, check habits, and analyze uploaded images.",
-                    color = colors.textMuted,
-                    fontSize = 11.sp,
-                    lineHeight = 15.sp
+                    text = "Schedule, log meals and sleep, or ask about a photo.",
+                    style = com.example.fio.ui.theme.FioType.small,
+                    color = colors.textMuted
                 )
 
                 // Attached Image preview
@@ -388,8 +307,8 @@ fun DashboardScreen(
                         Icon(imageVector = Icons.Default.Image, contentDescription = null, tint = colors.primary, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Image Attached for Wingman", color = colors.textPrimary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                            Text("Will be downscaled, stored in app, and inspected by AI", color = colors.textMuted, fontSize = 9.sp)
+                            Text("Photo attached", color = colors.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Wingman will look at it", color = colors.textMuted, fontSize = 10.sp)
                         }
                         IconButton(onClick = {
                             agentAttachedImageUri = null
@@ -426,13 +345,14 @@ fun DashboardScreen(
                     OutlinedTextField(
                         value = agentInput,
                         onValueChange = { agentInput = it },
-                        placeholder = { Text("Ask Wingman to schedule, log, or analyze...", color = colors.textMuted, fontSize = 12.sp) },
+                        placeholder = { Text("Ask me to schedule, log, or look at a photo", color = colors.textMuted, fontSize = 12.5.sp) },
                         modifier = Modifier
                             .weight(1f)
                             .testTag("ai_schedule_input"),
                         singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = colors.primary,
+                            focusedBorderColor = colors.accent,
                             unfocusedBorderColor = colors.border,
                             focusedTextColor = colors.textPrimary,
                             unfocusedTextColor = colors.textPrimary
@@ -512,14 +432,12 @@ fun DashboardScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(imageVector = Icons.Default.ChatBubbleOutline, contentDescription = null, tint = colors.primary, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Wingman Response", color = colors.primary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text("Wingman", color = colors.accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                         }
                         Spacer(modifier = Modifier.height(4.dp))
                         FioMarkdown(
                             text = reply,
-                            baseFontSize = 12.sp,
+                            baseFontSize = 12.5.sp,
                             modifier = Modifier.fillMaxWidth()
                         )
 
@@ -528,7 +446,7 @@ fun DashboardScreen(
                             Spacer(modifier = Modifier.height(8.dp))
                             FioDivider()
                             Spacer(modifier = Modifier.height(6.dp))
-                            Text("Wingman Proposed Actions:", color = colors.warning, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text("Wingman suggests", color = colors.warning, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                             Spacer(modifier = Modifier.height(4.dp))
 
                             agentPendingActions.forEach { action ->
@@ -561,27 +479,13 @@ fun DashboardScreen(
             }
         }
 
-        // --- 4. Today's Schedule ---
+        // --- 4. Today's schedule ---
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text("Today's Schedule", color = colors.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                Row(
-                    modifier = Modifier.clickable { onNavigate(FioScreen.CALENDAR) },
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("View Calendar", color = colors.primary, fontSize = 12.sp)
-                    Icon(
-                        imageVector = Icons.Default.KeyboardArrowRight,
-                        contentDescription = null,
-                        tint = colors.primary,
-                        modifier = Modifier.size(14.dp)
-                    )
-                }
-            }
+            com.example.fio.ui.components.FioSectionHeader(
+                title = "Today",
+                actionLabel = "Calendar",
+                onAction = { onNavigate(FioScreen.CALENDAR) }
+            )
         }
 
         if (events.isEmpty()) {
@@ -647,21 +551,14 @@ fun DashboardScreen(
             }
         }
 
-        // --- 5. Habits Quick Check ---
+        // --- 5. Habits ---
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text("Daily Habits", color = colors.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                Text("Streaks", color = colors.textMuted, fontSize = 12.sp)
-            }
+            com.example.fio.ui.components.FioSectionHeader(title = "Habits")
         }
 
         if (habits.isEmpty()) {
             item {
-                Text("No habits added yet. Tap '+ Habit' in Habits & Goals or ask Wingman to create one.", color = colors.textMuted, fontSize = 12.sp)
+                Text("No habits yet. Add one in Progress.", color = colors.textMuted, style = com.example.fio.ui.theme.FioType.small)
             }
         } else {
             items(habits, key = { it.id }) { habit ->
@@ -671,7 +568,7 @@ fun DashboardScreen(
                 FioCard(
                     backgroundColor = colors.surface,
                     borderColor = if (isCompleted) colors.primary.copy(alpha = 0.4f) else colors.border,
-                    padding = PaddingValues(10.dp),
+                    padding = PaddingValues(14.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable { repository.toggleHabitToday(habit.id) }
@@ -685,38 +582,38 @@ fun DashboardScreen(
                             modifier = Modifier
                                 .size(24.dp)
                                 .clip(CircleShape)
-                                .background(if (isCompleted) colors.primary else Color.Transparent)
-                                .border(1.dp, if (isCompleted) colors.primary else colors.border, CircleShape),
+                                .background(if (isCompleted) colors.accent else Color.Transparent)
+                                .border(1.5.dp, if (isCompleted) colors.accent else colors.border, CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
                             if (isCompleted) {
-                                Icon(imageVector = Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                Icon(imageVector = Icons.Default.Check, contentDescription = null, tint = colors.background, modifier = Modifier.size(15.dp))
                             }
                         }
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(text = habit.name, color = colors.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                            Text(text = habit.name, color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                             if (habit.description.isNotBlank()) {
-                                Text(text = habit.description, color = colors.textMuted, fontSize = 10.sp)
+                                Text(text = habit.description, color = colors.textMuted, fontSize = 11.sp)
                             }
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(imageVector = Icons.Default.LocalFireDepartment, contentDescription = null, tint = colors.warning, modifier = Modifier.size(16.dp))
-                            Text(text = "${habit.streak}d", color = colors.warning, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Icon(imageVector = Icons.Default.LocalFireDepartment, contentDescription = null, tint = colors.warning, modifier = Modifier.size(15.dp))
+                            Text(text = "${habit.streak}d", color = colors.warning, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
             }
         }
 
-        // --- 6. Active Goals ---
+        // --- 6. Goals ---
         item {
-            Text("Active Goals", color = colors.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            com.example.fio.ui.components.FioSectionHeader(title = "Goals")
         }
 
         if (goals.isEmpty()) {
             item {
-                Text("No goals set yet. Set targets in Habits & Goals or ask Wingman.", color = colors.textMuted, fontSize = 12.sp)
+                Text("No goals yet. Add one in Progress.", color = colors.textMuted, style = com.example.fio.ui.theme.FioType.small)
             }
         } else {
             items(goals, key = { it.id }) { goal ->

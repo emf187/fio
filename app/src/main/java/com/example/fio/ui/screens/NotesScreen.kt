@@ -501,12 +501,19 @@ fun NotesScreen(repository: FioRepository) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
-                    Text("Notes & Links", color = colors.textPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                    Text("Markdown-first knowledge base with [[wikilinks]]", color = colors.textMuted, fontSize = 11.sp)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Notes", style = com.example.fio.ui.theme.FioType.display, color = colors.textPrimary)
+                    Spacer(modifier = Modifier.height(3.dp))
+                    Text(
+                        "Markdown notes with [[wikilinks]] and folders.",
+                        style = com.example.fio.ui.theme.FioType.small,
+                        color = colors.textMuted
+                    )
                 }
-
-                IconButton(
+                Spacer(modifier = Modifier.width(12.dp))
+                com.example.fio.ui.components.FioPrimaryButton(
+                    text = "New note",
+                    icon = Icons.Default.Add,
                     onClick = {
                         val newNote = NoteItem(
                             title = "Untitled Note",
@@ -517,13 +524,8 @@ fun NotesScreen(repository: FioRepository) {
                         repository.saveNote(newNote)
                         editingNote = newNote
                     },
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(colors.primary)
-                        .testTag("create_new_note_button")
-                ) {
-                    Icon(imageVector = Icons.Default.Add, contentDescription = "New Note", tint = Color.White)
-                }
+                    modifier = Modifier.testTag("create_new_note_button")
+                )
             }
         }
 

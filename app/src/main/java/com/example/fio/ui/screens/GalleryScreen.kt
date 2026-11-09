@@ -171,44 +171,26 @@ fun GalleryScreen(repository: FioRepository) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text("Gallery", color = colors.textPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text("Gallery", style = com.example.fio.ui.theme.FioType.display, color = colors.textPrimary)
+                Spacer(modifier = Modifier.height(3.dp))
                 Text(
                     text = when (images.size) {
-                        0 -> "Store pictures on this device"
-                        1 -> "1 photo stored on this device"
-                        else -> "${images.size} photos stored on this device"
+                        0 -> "Pictures you save for studying live here."
+                        1 -> "1 photo, stored on this device."
+                        else -> "${images.size} photos, stored on this device."
                     },
-                    color = colors.textMuted,
-                    fontSize = 11.sp
+                    style = com.example.fio.ui.theme.FioType.small,
+                    color = colors.textMuted
                 )
             }
+            Spacer(modifier = Modifier.width(12.dp))
             Box {
-            Button(
-                onClick = { showAddMenu = true },
+            com.example.fio.ui.components.FioPrimaryButton(
+                text = if (isImporting) "Adding…" else "Add",
+                icon = if (isImporting) null else Icons.Default.AddPhotoAlternate,
                 enabled = !isImporting,
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-            ) {
-                if (isImporting) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(14.dp),
-                        strokeWidth = 2.dp,
-                        color = Color.White
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Adding...", color = Color.White, fontSize = 11.sp)
-                } else {
-                    Icon(
-                        imageVector = Icons.Default.AddPhotoAlternate,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Add photos", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                }
-            }
+                onClick = { showAddMenu = true }
+            )
             DropdownMenu(
                 expanded = showAddMenu,
                 onDismissRequest = { showAddMenu = false },

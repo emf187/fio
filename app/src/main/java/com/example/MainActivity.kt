@@ -10,8 +10,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -187,8 +187,8 @@ fun FioAppContent(
     ) {
         Scaffold(
             topBar = {
-                val screenTitle = if (currentScreen == FioScreen.DASHBOARD && profileName.isNotBlank()) {
-                    profileName
+                val screenTitle = if (currentScreen == FioScreen.DASHBOARD) {
+                    "Fio"
                 } else {
                     currentScreen.title
                 }
@@ -196,14 +196,16 @@ fun FioAppContent(
                     title = screenTitle,
                     onOpenNav = { coroutineScope.launch { drawerState.open() } },
                     actions = {
-                        IconButton(
-                            onClick = { currentScreen = FioScreen.SETTINGS }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Key,
-                                contentDescription = "API Keys & Settings",
-                                tint = colors.textSecondary
-                            )
+                        if (currentScreen != FioScreen.SETTINGS) {
+                            IconButton(
+                                onClick = { currentScreen = FioScreen.SETTINGS }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Settings,
+                                    contentDescription = "Settings",
+                                    tint = colors.textSecondary
+                                )
+                            }
                         }
                     }
                 )

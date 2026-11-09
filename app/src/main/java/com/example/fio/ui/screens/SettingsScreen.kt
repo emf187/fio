@@ -36,8 +36,15 @@ import com.example.fio.data.transfer.FioWifi
 import com.example.fio.data.transfer.TransferServer
 import com.example.fio.ui.components.FioCard
 import com.example.fio.ui.components.FioDivider
+import com.example.fio.ui.components.FioPrimaryButton
+import com.example.fio.ui.components.FioRow
+import com.example.fio.ui.components.FioScreenHeader
+import com.example.fio.ui.components.FioSecondaryButton
+import com.example.fio.ui.components.FioSectionHeader
+import com.example.fio.ui.theme.FioType
 import com.example.fio.ui.theme.LocalFioColors
 import com.example.fio.ui.theme.accentSwatch
+import com.example.fio.ui.theme.themePreview
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -199,57 +206,51 @@ fun SettingsScreen(repository: FioRepository) {
     ) {
         // --- 1. Header ---
         item {
-            Column {
-                Text("Settings & Customization", color = colors.textPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                Text("Provider-agnostic AI, themes, lockdown rules, and offline data sync", color = colors.textMuted, fontSize = 11.sp)
-            }
+            FioScreenHeader(
+                title = "Settings",
+                subtitle = "Make it yours. Everything stays on this device."
+            )
         }
 
-        // --- 1b. User Profile & Identity ---
+        // --- 1b. Your name ---
         item {
             FioCard(
                 backgroundColor = colors.surface,
                 borderColor = colors.border,
-                padding = PaddingValues(16.dp)
+                padding = PaddingValues(18.dp)
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(imageVector = Icons.Default.Person, contentDescription = null, tint = colors.primary, modifier = Modifier.size(20.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Profile Name & Identity", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                }
-                Spacer(modifier = Modifier.height(4.dp))
+                Text("Your name", style = FioType.section, color = colors.textPrimary)
+                Spacer(modifier = Modifier.height(3.dp))
                 Text(
-                    text = "Displayed across your personal dashboard and exported with all books, documents, and progress.",
-                    color = colors.textMuted,
-                    fontSize = 11.sp
+                    text = "Shown on your home screen and in your chats.",
+                    style = FioType.small,
+                    color = colors.textMuted
                 )
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(12.dp))
                 OutlinedTextField(
                     value = profileNameInput,
                     onValueChange = { profileNameInput = it },
-                    label = { Text("Profile Name", color = colors.textMuted) },
+                    label = { Text("Name", color = colors.textMuted) },
                     singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
                     modifier = Modifier.fillMaxWidth().testTag("profile_name_settings_input"),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = colors.primary,
+                        focusedBorderColor = colors.accent,
                         unfocusedBorderColor = colors.border,
                         focusedTextColor = colors.textPrimary,
                         unfocusedTextColor = colors.textPrimary
                     )
                 )
                 Spacer(modifier = Modifier.height(10.dp))
-                Button(
+                FioPrimaryButton(
+                    text = "Save name",
                     onClick = {
                         val trimmed = profileNameInput.trim().ifEmpty { "User" }
                         repository.setProfileName(trimmed)
-                        Toast.makeText(context, "Profile name updated to $trimmed", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Name saved", Toast.LENGTH_SHORT).show()
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
-                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth().testTag("save_profile_name_button")
-                ) {
-                    Text("Update Profile Name", color = Color.White)
-                }
+                )
             }
         }
 
@@ -260,18 +261,14 @@ fun SettingsScreen(repository: FioRepository) {
                 borderColor = colors.border,
                 padding = PaddingValues(16.dp)
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(imageVector = Icons.Default.Key, contentDescription = null, tint = colors.primary, modifier = Modifier.size(20.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("AI Provider & Local API Key", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                }
-                Spacer(modifier = Modifier.height(4.dp))
+                Text("AI assistant", style = FioType.section, color = colors.textPrimary)
+                Spacer(modifier = Modifier.height(3.dp))
                 Text(
-                    text = "Keys are stored locally on device only. Default is Google Gemini (free tier resets daily).",
-                    color = colors.textMuted,
-                    fontSize = 11.sp
+                    text = "Add a key from your AI provider. It stays on this phone.",
+                    style = FioType.small,
+                    color = colors.textMuted
                 )
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
                 // Provider picker: tap sets provider and fills the matching defaults.
                 val providers = listOf(
@@ -426,7 +423,8 @@ fun SettingsScreen(repository: FioRepository) {
                 )
 
                 Spacer(modifier = Modifier.height(10.dp))
-                Button(
+                FioPrimaryButton(
+                    text = "Save AI settings",
                     onClick = {
                         val updated = settings.copy(
                             aiProvider = providerChoice,
@@ -435,14 +433,10 @@ fun SettingsScreen(repository: FioRepository) {
                             aiModelName = modelNameInput.trim()
                         )
                         repository.updateSettings(updated)
-                        Toast.makeText(context, "AI configuration saved", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "AI settings saved", Toast.LENGTH_SHORT).show()
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
-                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth().testTag("save_ai_settings_button")
-                ) {
-                    Text("Save AI Settings", color = Color.White)
-                }
+                )
             }
         }
 
@@ -451,92 +445,116 @@ fun SettingsScreen(repository: FioRepository) {
             FioCard(
                 backgroundColor = colors.surface,
                 borderColor = colors.border,
-                padding = PaddingValues(16.dp)
+                padding = PaddingValues(18.dp)
             ) {
-                Text("AI Answers: Math & Related Images", color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(6.dp))
+                Text("AI answers", style = FioType.section, color = colors.textPrimary)
+                Spacer(modifier = Modifier.height(3.dp))
                 Text(
-                    text = "Wingman and Tutor always render real math (fractions, powers, Σ, ∫). They can also fetch 1–2 relevant images from the web for replies where a picture truly helps — abstract concepts, objects, diagrams.",
-                    color = colors.textMuted,
-                    fontSize = 11.sp,
-                    lineHeight = 15.sp
+                    text = "Math is always shown properly. Wingman can also include a useful picture when one helps.",
+                    style = FioType.small,
+                    color = colors.textMuted
                 )
-                Spacer(modifier = Modifier.height(10.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Show related images in AI answers", color = colors.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                        Text(
-                            text = if (settings.showAiImages) "On — images may appear under replies that need them (uses data)." else "Off — text-only replies (saves data).",
-                            color = colors.textMuted,
-                            fontSize = 11.sp
+                Spacer(modifier = Modifier.height(4.dp))
+                FioRow(
+                    title = "Show pictures in answers",
+                    subtitle = if (settings.showAiImages)
+                        "On. Pictures appear when they help, using a little data."
+                    else "Off. Answers are text only, which saves data.",
+                    trailing = {
+                        Switch(
+                            checked = settings.showAiImages,
+                            onCheckedChange = {
+                                repository.updateSettings(settings.copy(showAiImages = it))
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = colors.primary
+                            ),
+                            modifier = Modifier.testTag("show_ai_images_toggle")
                         )
                     }
-                    Switch(
-                        checked = settings.showAiImages,
-                        onCheckedChange = {
-                            repository.updateSettings(settings.copy(showAiImages = it))
-                        },
-                        colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = colors.primary),
-                        modifier = Modifier.testTag("show_ai_images_toggle")
-                    )
-                }
+                )
             }
         }
 
-        // --- 3. Theme & Accessibility Customization ---
+        // --- 3. Look and feel ---
         item {
             FioCard(
                 backgroundColor = colors.surface,
                 borderColor = colors.border,
-                padding = PaddingValues(16.dp)
+                padding = PaddingValues(18.dp)
             ) {
-                Text("Appearance & Themes", color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(6.dp))
-                Text("Pick a dark, high contrast, or light palette.", color = colors.textMuted, fontSize = 11.sp)
-                Spacer(modifier = Modifier.height(10.dp))
+                Text("Look and feel", style = FioType.section, color = colors.textPrimary)
+                Spacer(modifier = Modifier.height(3.dp))
+                Text(
+                    "Pick a canvas, then make it yours with an accent colour.",
+                    style = FioType.small,
+                    color = colors.textMuted
+                )
+                Spacer(modifier = Modifier.height(14.dp))
 
-                val themes = listOf(
-                    "OBSIDIAN_PURPLE" to "Dark",
-                    "OLED_BLACK" to "OLED Black",
-                    "HIGH_CONTRAST" to "High Contrast",
-                    "OBSIDIAN_LIGHT" to "Light (Default)"
+                val themeOptions = listOf(
+                    "OBSIDIAN_PURPLE" to "Midnight",
+                    "SLATE" to "Slate",
+                    "PLUM" to "Plum",
+                    "FOREST" to "Forest",
+                    "OBSIDIAN_LIGHT" to "Paper",
+                    "SAND" to "Sand",
+                    "MIST" to "Mist",
+                    "OLED_BLACK" to "True black",
+                    "HIGH_CONTRAST" to "Contrast"
                 )
 
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    themes.forEach { (id, label) ->
-                        val isSelected = settings.theme == id
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(if (isSelected) colors.primaryContainer else colors.surfaceElevated)
-                                .clickable {
-                                    val updated = settings.copy(theme = id)
-                                    repository.updateSettings(updated)
-                                }
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            RadioButton(
-                                selected = isSelected,
-                                onClick = {
-                                    val updated = settings.copy(theme = id)
-                                    repository.updateSettings(updated)
-                                },
-                                colors = RadioButtonDefaults.colors(selectedColor = colors.primary)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(text = label, color = if (isSelected) colors.primary else colors.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                themeOptions.chunked(3).forEach { rowThemes ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        rowThemes.forEach { (id, label) ->
+                            val isSelected = settings.theme == id
+                            val (previewBg, previewAccent, previewText) = themePreview(id)
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(previewBg)
+                                    .then(
+                                        if (isSelected) Modifier.border(
+                                            1.5.dp,
+                                            previewAccent,
+                                            RoundedCornerShape(14.dp)
+                                        ) else Modifier
+                                    )
+                                    .clickable {
+                                        repository.updateSettings(settings.copy(theme = id))
+                                    }
+                                    .padding(10.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(9.dp)
+                                        .clip(CircleShape)
+                                        .background(previewAccent)
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    text = label,
+                                    color = previewText,
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                        repeat(3 - rowThemes.size) {
+                            Spacer(modifier = Modifier.weight(1f))
                         }
                     }
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
-                Text("Accent Colour", color = colors.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(modifier = Modifier.height(6.dp))
+                Text("Accent", style = FioType.label, color = colors.textPrimary)
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(
                     modifier = Modifier
@@ -545,9 +563,8 @@ fun SettingsScreen(repository: FioRepository) {
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     val accents = listOf(
-                        "PURPLE" to "Purple",
+                        "MINT" to "Theme",
                         "BLUE" to "Blue",
-                        "TEAL" to "Teal",
                         "GREEN" to "Green",
                         "AMBER" to "Amber",
                         "ROSE" to "Rose",
@@ -557,13 +574,13 @@ fun SettingsScreen(repository: FioRepository) {
                         val selected = settings.accentColor == id
                         Row(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(50))
+                                .clip(RoundedCornerShape(999.dp))
                                 .background(
                                     if (selected) accentSwatch(id).copy(alpha = 0.18f)
                                     else colors.surfaceElevated
                                 )
                                 .clickable { repository.updateSettings(settings.copy(accentColor = id)) }
-                                .padding(horizontal = 10.dp, vertical = 7.dp),
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Box(
@@ -576,36 +593,33 @@ fun SettingsScreen(repository: FioRepository) {
                             Text(
                                 text = label,
                                 color = if (selected) accentSwatch(id) else colors.textSecondary,
-                                fontSize = 11.sp,
+                                fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Medium
                             )
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
-                FioDivider()
                 Spacer(modifier = Modifier.height(10.dp))
+                FioDivider()
+                Spacer(modifier = Modifier.height(4.dp))
 
-                // Reduce motion toggle (Section UI requirement)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Reduce Motion", color = colors.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                        Text("Minimizes transitions and keeps CPU usage minimal on older hardware.", color = colors.textMuted, fontSize = 11.sp)
+                FioRow(
+                    title = "Reduce motion",
+                    subtitle = "Turns off extra animation. Easier on older devices.",
+                    trailing = {
+                        Switch(
+                            checked = settings.reduceMotion,
+                            onCheckedChange = {
+                                repository.updateSettings(settings.copy(reduceMotion = it))
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = colors.primary
+                            )
+                        )
                     }
-                    Switch(
-                        checked = settings.reduceMotion,
-                        onCheckedChange = {
-                            val updated = settings.copy(reduceMotion = it)
-                            repository.updateSettings(updated)
-                        },
-                        colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = colors.primary)
-                    )
-                }
+                )
             }
         }
 
@@ -616,20 +630,25 @@ fun SettingsScreen(repository: FioRepository) {
                 borderColor = colors.border,
                 padding = PaddingValues(16.dp)
             ) {
-                Text("Lockdown & Break Rules", color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(6.dp))
-                Text("Configure grace period before strikes and scheduled break frequency.", color = colors.textMuted, fontSize = 11.sp)
-                Spacer(modifier = Modifier.height(10.dp))
+                Text("Focus rules", style = FioType.section, color = colors.textPrimary)
+                Spacer(modifier = Modifier.height(3.dp))
+                Text(
+                    "Choose how strict focus sessions are and how often you get breaks.",
+                    style = FioType.small,
+                    color = colors.textMuted
+                )
+                Spacer(modifier = Modifier.height(12.dp))
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = gracePeriodInput,
                         onValueChange = { gracePeriodInput = it },
-                        label = { Text("Grace Period (sec)", color = colors.textMuted) },
+                        label = { Text("Grace (seconds)", color = colors.textMuted) },
                         singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
                         modifier = Modifier.weight(1f),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = colors.primary,
+                            focusedBorderColor = colors.accent,
                             unfocusedBorderColor = colors.border,
                             focusedTextColor = colors.textPrimary,
                             unfocusedTextColor = colors.textPrimary
@@ -638,11 +657,12 @@ fun SettingsScreen(repository: FioRepository) {
                     OutlinedTextField(
                         value = breakDurInput,
                         onValueChange = { breakDurInput = it },
-                        label = { Text("Break Length (min)", color = colors.textMuted) },
+                        label = { Text("Break (minutes)", color = colors.textMuted) },
                         singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
                         modifier = Modifier.weight(1f),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = colors.primary,
+                            focusedBorderColor = colors.accent,
                             unfocusedBorderColor = colors.border,
                             focusedTextColor = colors.textPrimary,
                             unfocusedTextColor = colors.textPrimary
@@ -650,197 +670,153 @@ fun SettingsScreen(repository: FioRepository) {
                     )
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
-                Button(
+                Spacer(modifier = Modifier.height(10.dp))
+                FioSecondaryButton(
+                    text = "Save rules",
                     onClick = {
                         val grace = gracePeriodInput.toIntOrNull() ?: 15
                         val breakDur = breakDurInput.toIntOrNull() ?: 10
                         val updated = settings.copy(gracePeriodSeconds = grace, breakDurationMinutes = breakDur)
                         repository.updateSettings(updated)
-                        Toast.makeText(context, "Timer rules updated", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Focus rules saved", Toast.LENGTH_SHORT).show()
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = colors.surfaceElevated),
-                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Update Lockdown Rules", color = colors.primary)
-                }
+                )
             }
         }
 
-        // --- 5. Data Privacy & Offline Wi-Fi Backup (Section 14 requirement) ---
+        // --- 5. Backup ---
         item {
             FioCard(
                 backgroundColor = colors.surface,
                 borderColor = colors.border,
-                padding = PaddingValues(16.dp)
+                padding = PaddingValues(18.dp)
             ) {
-                Text("Data & Privacy (Offline-First)", color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(6.dp))
-                Text("No account or cloud dependency. All your books, documents, reading progress, chat sessions, notes, logs, and profile remain local. Export and import over Wi-Fi/file:", color = colors.textMuted, fontSize = 11.sp)
-                Spacer(modifier = Modifier.height(10.dp))
+                Text("Backup", style = FioType.section, color = colors.textPrimary)
+                Spacer(modifier = Modifier.height(3.dp))
+                Text(
+                    "Your data stays on this phone. Save a text copy, or restore one you made earlier.",
+                    style = FioType.small,
+                    color = colors.textMuted
+                )
+                Spacer(modifier = Modifier.height(12.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Button(
+                    FioSecondaryButton(
+                        text = "Save a copy",
+                        icon = Icons.Default.Share,
                         onClick = { importExportDialogState = "EXPORT" },
-                        colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
-                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.weight(1f).testTag("export_data_button")
-                    ) {
-                        Icon(imageVector = Icons.Default.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Export Backup", color = Color.White, fontSize = 12.sp)
-                    }
-
-                    OutlinedButton(
+                    )
+                    FioSecondaryButton(
+                        text = "Restore",
+                        icon = Icons.Default.Restore,
                         onClick = {
                             backupJsonInput = ""
                             importExportDialogState = "IMPORT"
                         },
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = colors.textPrimary,
-                            containerColor = colors.surfaceElevated
-                        ),
-                        border = null,
-                        shape = RoundedCornerShape(10.dp),
                         modifier = Modifier.weight(1f).testTag("import_data_button")
-                    ) {
-                        Icon(imageVector = Icons.Default.Restore, contentDescription = null, tint = colors.textPrimary, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Import Backup", color = colors.textPrimary, fontSize = 12.sp)
-                    }
+                    )
                 }
             }
         }
 
-        // --- 5b. Device to Device Transfer (complete profile clone over Wi-Fi) ---
+        // --- 5b. Move to another device ---
         item {
             FioCard(
                 backgroundColor = colors.surface,
                 borderColor = colors.border,
-                padding = PaddingValues(16.dp)
+                padding = PaddingValues(18.dp)
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(imageVector = Icons.Default.Devices, contentDescription = null, tint = colors.primary, modifier = Modifier.size(20.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Device to Device Transfer", color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                }
-                Spacer(modifier = Modifier.height(6.dp))
+                Text("Move to another device", style = FioType.section, color = colors.textPrimary)
+                Spacer(modifier = Modifier.height(3.dp))
                 Text(
-                    "Clone or SYNC your ENTIRE profile to another device over the same Wi-Fi — courses, books & PDFs, notes with images, chats, gallery photos, flashcards, tutor sessions, stats, calendar, timetable + alarms, settings and your AI key. Devices find each other automatically — no addresses to type.",
-                    color = colors.textMuted,
-                    fontSize = 11.sp
+                    "Copies everything to another phone or tablet on the same Wi-Fi: books, notes, chats, photos, calendar, settings and your AI key. Devices find each other automatically.",
+                    style = FioType.small,
+                    color = colors.textMuted
                 )
-                Spacer(modifier = Modifier.height(10.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Button(
-                        onClick = { transferSendOpen = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.weight(1f).testTag("transfer_send_button")
-                    ) {
-                        Icon(imageVector = Icons.Default.IosShare, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Clone (Send)", color = Color.White, fontSize = 11.sp)
-                    }
-                }
+                Spacer(modifier = Modifier.height(12.dp))
+                FioPrimaryButton(
+                    text = "Clone this profile",
+                    icon = Icons.Default.IosShare,
+                    onClick = { transferSendOpen = true },
+                    modifier = Modifier.fillMaxWidth().testTag("transfer_send_button")
+                )
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Button(
+                    FioSecondaryButton(
+                        text = "Sync progress",
+                        icon = Icons.Default.Sync,
                         onClick = { transferReceiveMerge = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = colors.success),
-                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.weight(1f).testTag("transfer_sync_button")
-                    ) {
-                        Icon(imageVector = Icons.Default.Sync, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Sync Progress", color = Color.White, fontSize = 11.sp)
-                    }
-
-                    OutlinedButton(
+                    )
+                    FioSecondaryButton(
+                        text = "Receive",
+                        icon = Icons.Default.DeviceHub,
                         onClick = { transferReceiveMerge = false },
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = colors.textPrimary,
-                            containerColor = colors.surfaceElevated
-                        ),
-                        border = null,
-                        shape = RoundedCornerShape(10.dp),
                         modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(imageVector = Icons.Default.DeviceHub, contentDescription = null, tint = colors.textPrimary, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Receive", color = colors.textPrimary, fontSize = 11.sp)
-                    }
+                    )
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    "Tip: use Sync after you've been studying on either device — records merge with the newest copy of each item winning, so the device you used most keeps its progress. Both devices must be on the same Wi-Fi; the receiver lists nearby devices automatically.",
-                    color = colors.textMuted,
-                    fontSize = 10.sp
+                    "Sync keeps the newest version of each item, so nothing you did on either device is lost.",
+                    style = FioType.caption,
+                    color = colors.textMuted
                 )
             }
         }
 
-        // --- 6. App Source Code & Export Options ---
+        // --- 6. About this app ---
         item {
             FioCard(
                 backgroundColor = colors.surface,
                 borderColor = colors.border,
-                padding = PaddingValues(16.dp)
+                padding = PaddingValues(18.dp)
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(imageVector = Icons.Default.Code, contentDescription = null, tint = colors.primary, modifier = Modifier.size(20.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("App Source Code & Installation", color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                }
+                Text("About this app", style = FioType.section, color = colors.textPrimary)
+                Spacer(modifier = Modifier.height(3.dp))
+                Text(
+                    "Fio is open source. The full Android project can be downloaded or synced from GitHub at any time.",
+                    style = FioType.small,
+                    color = colors.textMuted
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                FioSecondaryButton(
+                    text = "Open the source on GitHub",
+                    icon = Icons.Default.Code,
+                    onClick = {
+                        runCatching {
+                            context.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/emf187/fio"))
+                            )
+                        }
+                    }
+                )
+            }
+        }
+
+        // --- 7. About the maker ---
+        item {
+            FioCard(
+                backgroundColor = colors.surface,
+                borderColor = colors.border,
+                padding = PaddingValues(18.dp)
+            ) {
+                Text("About Fio", style = FioType.section, color = colors.textPrimary)
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    text = "100% open native Android Kotlin codebase. You can export the full source code anytime:",
-                    color = colors.textMuted,
-                    fontSize = 11.sp,
-                    lineHeight = 15.sp
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "• Download ZIP: In the Google AI Studio menu (top bar), click 'Export project as ZIP' to download the entire Android project.\n• GitHub Sync: Export directly to your GitHub repository.\n• APK Installation: Download the built debug APK to install directly on your tablet or phone.",
-                    color = colors.textSecondary,
-                    fontSize = 11.sp,
-                    lineHeight = 16.sp
-                )
-            }
-        }
-
-        // --- 6. About ---
-        item {
-            FioCard(
-                backgroundColor = colors.surface,
-                borderColor = colors.border,
-                padding = PaddingValues(16.dp)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(imageVector = Icons.Default.Info, contentDescription = null, tint = colors.primary, modifier = Modifier.size(20.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("About Fio", color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "\u201cI was bored, so I made my private study app.\u201d",
-                    color = colors.textSecondary,
-                    fontSize = 12.sp,
-                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                    text = "A private study app, made for one person and shared openly.",
+                    style = FioType.small,
+                    color = colors.textSecondary
                 )
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(12.dp))
                 AboutRow(label = "Developer", value = "Mike Edeimu")
                 AboutRow(
                     label = "GitHub",
@@ -855,40 +831,30 @@ fun SettingsScreen(repository: FioRepository) {
                 )
                 AboutRow(label = "Version", value = BuildConfig.VERSION_NAME)
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(12.dp))
                 FioDivider()
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(4.dp))
 
-                // Wingman chatbot history stats + clear action
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Wingman Chatbot History",
-                            color = colors.textPrimary,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = if (chatHistory.isEmpty()) {
-                                "No chatbot messages stored yet."
-                            } else {
-                                "${chatHistory.size} message(s) stored on this device only"
-                            },
-                            color = colors.textMuted,
-                            fontSize = 11.sp
-                        )
-                    }
-                    if (chatHistory.isNotEmpty()) {
-                        TextButton(
-                            onClick = {
-                                repository.clearChatHistory()
-                                Toast.makeText(context, "Chatbot history cleared", Toast.LENGTH_SHORT).show()
+                FioRow(
+                    title = "Chat history",
+                    subtitle = if (chatHistory.isEmpty()) {
+                        "No messages saved yet."
+                    } else {
+                        "${chatHistory.size} messages, stored on this device."
+                    },
+                    trailing = if (chatHistory.isNotEmpty()) {
+                        {
+                            TextButton(
+                                onClick = {
+                                    repository.clearChatHistory()
+                                    Toast.makeText(context, "Chat history cleared", Toast.LENGTH_SHORT).show()
+                                }
+                            ) {
+                                Text("Clear", color = colors.error, fontSize = 12.sp)
                             }
-                        ) {
-                            Text("Clear History", color = colors.error, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                         }
-                    }
-                }
+                    } else null
+                )
             }
         }
     }

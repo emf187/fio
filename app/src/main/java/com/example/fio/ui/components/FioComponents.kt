@@ -26,20 +26,21 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.fio.data.model.ProposedScheduleChange
 import com.example.fio.data.model.formatTimestamp
+import com.example.fio.ui.theme.FioType
 import com.example.fio.ui.theme.LocalFioColors
 
 enum class FioScreen(val title: String, val icon: ImageVector) {
-    DASHBOARD("Dashboard", Icons.Default.Dashboard),
-    CALENDAR("Calendar & Schedule", Icons.Default.CalendarMonth),
+    DASHBOARD("Home", Icons.Default.Home),
+    CALENDAR("Calendar", Icons.Default.CalendarMonth),
     TIMETABLE("Timetable", Icons.Default.Schedule),
-    STUDY("Study Companion", Icons.AutoMirrored.Filled.MenuBook),
-    TUTOR("Tutor & Practice", Icons.Default.School),
+    STUDY("Study", Icons.AutoMirrored.Filled.MenuBook),
+    TUTOR("Tutor", Icons.Default.School),
     CALCULATOR("Calculator", Icons.Default.Calculate),
-    TIMER("Timer & Lockdown", Icons.Default.Timer),
-    NOTES("Notes & Links", Icons.Default.EditNote),
-    GALLERY("Gallery", Icons.Default.Collections),
-    HEALTH("Sleep & Meals", Icons.Default.Favorite),
-    STATS("Stats & Life Score", Icons.Default.Analytics),
+    TIMER("Focus timer", Icons.Default.Timer),
+    NOTES("Notes", Icons.Default.EditNote),
+    GALLERY("Gallery", Icons.Default.PhotoLibrary),
+    HEALTH("Health", Icons.Default.Favorite),
+    STATS("Progress", Icons.Default.Insights),
     SETTINGS("Settings", Icons.Default.Settings)
 }
 
@@ -58,44 +59,46 @@ fun FioTopBar(
             .fillMaxWidth()
             .statusBarsPadding()
     ) {
-        Column {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (showMenu) {
-                    IconButton(
-                        onClick = onOpenNav,
-                        modifier = Modifier.testTag("nav_drawer_toggle")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Menu,
-                            contentDescription = "Open Navigation Menu",
-                            tint = colors.textSecondary
-                        )
-                    }
-                }
-
-                Text(
-                    text = title,
-                    color = colors.textPrimary,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    letterSpacing = (-0.2).sp,
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (showMenu) {
+                IconButton(
+                    onClick = onOpenNav,
                     modifier = Modifier
-                        .weight(1f)
-                        .padding(start = if (showMenu) 2.dp else 6.dp)
-                        .clickable(onClick = onOpenNav)
-                )
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    content = actions
-                )
+                        .size(44.dp)
+                        .testTag("nav_drawer_toggle")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Menu,
+                        contentDescription = "Open menu",
+                        tint = colors.textPrimary,
+                        modifier = Modifier.size(21.dp)
+                    )
+                }
             }
-            FioDivider()
+
+            Text(
+                text = title,
+                color = colors.textPrimary,
+                fontSize = 19.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = (-0.3).sp,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = if (showMenu) 4.dp else 10.dp)
+                    .clickable(onClick = onOpenNav)
+            )
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                content = actions
+            )
         }
     }
 }
@@ -115,13 +118,12 @@ fun FioCard(
     modifier: Modifier = Modifier,
     backgroundColor: Color = LocalFioColors.current.surface,
     borderColor: Color = LocalFioColors.current.border,
-    padding: PaddingValues = PaddingValues(16.dp),
-    cornerRadius: Dp = 12.dp,
+    padding: PaddingValues = PaddingValues(18.dp),
+    cornerRadius: Dp = 16.dp,
     content: @Composable ColumnScope.() -> Unit
 ) {
     val shape = RoundedCornerShape(cornerRadius)
-    // Notion-style card: a quiet colored block, no outline. (borderColor kept for
-    // call-site compat; outlines made the card grid feel boxy.)
+    // Quiet tonal block, no outline: rhythm comes from spacing, not boxes.
     Box(
         modifier = modifier
             .clip(shape)
@@ -135,22 +137,21 @@ fun FioCard(
 @Composable
 fun FioBadge(
     text: String,
-    color: Color = LocalFioColors.current.primary,
+    color: Color = LocalFioColors.current.accent,
     modifier: Modifier = Modifier
 ) {
-    // Notion tag style: small rectangular chip with tiny corner radius, not a pill.
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(color.copy(alpha = 0.10f))
-            .padding(horizontal = 8.dp, vertical = 3.dp)
+            .clip(RoundedCornerShape(999.dp))
+            .background(color.copy(alpha = 0.12f))
+            .padding(horizontal = 9.dp, vertical = 4.dp)
     ) {
         Text(
             text = text,
             color = color,
-            fontSize = 10.sp,
+            fontSize = 10.5.sp,
             fontWeight = FontWeight.Medium,
-            letterSpacing = 0.2.sp
+            letterSpacing = 0.sp
         )
     }
 }
@@ -185,14 +186,14 @@ fun FioSidebarDrawer(
                     Text(
                         text = if (profileName.isNotBlank()) profileName else "Fio",
                         color = colors.textPrimary,
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = (-0.1).sp
+                        fontSize = 21.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = (-0.4).sp
                     )
                     Text(
-                        text = if (profileName.isNotBlank()) "Personal Life Planner" else "effio • to realize & know",
+                        text = "Private and offline",
                         color = colors.textMuted,
-                        fontSize = 11.sp
+                        fontSize = 12.sp
                     )
                 }
             }
@@ -201,7 +202,7 @@ fun FioSidebarDrawer(
 
             // Navigation Items
             Column(modifier = Modifier.weight(1f)) {
-                SectionLabel("PLANNING & FOCUS")
+                SectionLabel("Your day")
 
                 NavItem(
                     screen = FioScreen.DASHBOARD,
@@ -215,7 +216,7 @@ fun FioSidebarDrawer(
                 NavItem(FioScreen.TIMER, currentScreen, onSelectScreen, onClose)
 
                 Spacer(modifier = Modifier.height(10.dp))
-                SectionLabel("ACADEMICS & STUDY")
+                SectionLabel("Study")
 
                 NavItem(FioScreen.STUDY, currentScreen, onSelectScreen, onClose)
                 NavItem(FioScreen.TUTOR, currentScreen, onSelectScreen, onClose)
@@ -224,7 +225,7 @@ fun FioSidebarDrawer(
                 NavItem(FioScreen.GALLERY, currentScreen, onSelectScreen, onClose)
 
                 Spacer(modifier = Modifier.height(10.dp))
-                SectionLabel("HEALTH & INSIGHTS")
+                SectionLabel("Health and progress")
 
                 NavItem(FioScreen.HEALTH, currentScreen, onSelectScreen, onClose)
                 NavItem(FioScreen.STATS, currentScreen, onSelectScreen, onClose)
@@ -242,10 +243,10 @@ private fun SectionLabel(text: String) {
     Text(
         text = text,
         color = LocalFioColors.current.textMuted,
-        fontSize = 9.5.sp,
-        fontWeight = FontWeight.SemiBold,
-        letterSpacing = 0.8.sp,
-        modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
+        fontSize = 11.sp,
+        fontWeight = FontWeight.Medium,
+        letterSpacing = 0.sp,
+        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
     )
 }
 
@@ -259,20 +260,21 @@ private fun NavItem(
 ) {
     val colors = LocalFioColors.current
     val isSelected = screen == currentScreen
-    val background = if (isSelected) colors.textPrimary.copy(alpha = 0.07f) else Color.Transparent
-    val textColor = colors.textPrimary
-    val iconColor = if (isSelected) colors.primary else colors.textMuted
+    val background = if (isSelected) colors.surfaceElevated else Color.Transparent
+    val textColor = if (isSelected) colors.textPrimary else colors.textSecondary
+    val iconColor = if (isSelected) colors.accent else colors.textMuted
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(9.dp))
+            .padding(horizontal = 4.dp, vertical = 1.dp)
+            .clip(RoundedCornerShape(12.dp))
             .background(background)
             .clickable {
                 onSelectScreen(screen)
                 onClose()
             }
-            .padding(horizontal = 12.dp, vertical = 10.dp)
+            .padding(horizontal = 12.dp, vertical = 12.dp)
             .testTag("nav_item_${screen.name.lowercase()}"),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -282,11 +284,11 @@ private fun NavItem(
             tint = iconColor,
             modifier = Modifier.size(19.dp)
         )
-        Spacer(modifier = Modifier.width(11.dp))
+        Spacer(modifier = Modifier.width(12.dp))
         Text(
             text = customLabel ?: screen.title,
             color = textColor,
-            fontSize = 14.sp,
+            fontSize = 14.5.sp,
             fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
         )
     }
@@ -384,4 +386,230 @@ fun AiScheduleProposalDialog(
             }
         }
     )
+}
+
+// ---------------------------------------------------------------------------
+// Fio design system primitives (v2)
+// ---------------------------------------------------------------------------
+
+/** Large quiet screen heading. No card, no border — type carries the hierarchy. */
+@Composable
+fun FioScreenHeader(
+    title: String,
+    subtitle: String? = null,
+    modifier: Modifier = Modifier,
+    trailing: (@Composable () -> Unit)? = null
+) {
+    val colors = LocalFioColors.current
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = title, style = FioType.display, color = colors.textPrimary)
+            if (!subtitle.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(3.dp))
+                Text(text = subtitle, style = FioType.small, color = colors.textMuted)
+            }
+        }
+        trailing?.invoke()
+    }
+}
+
+/** Section heading with an optional plain-text action. */
+@Composable
+fun FioSectionHeader(
+    title: String,
+    modifier: Modifier = Modifier,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null
+) {
+    val colors = LocalFioColors.current
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = title,
+            style = FioType.section,
+            color = colors.textPrimary,
+            modifier = Modifier.weight(1f)
+        )
+        if (actionLabel != null && onAction != null) {
+            Text(
+                text = actionLabel,
+                style = FioType.label,
+                color = colors.accent,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(onClick = onAction)
+                    .padding(horizontal = 6.dp, vertical = 4.dp)
+            )
+        }
+    }
+}
+
+/**
+ * The one primary action in a view. In the dark theme it is a white pill with
+ * ink text — the reference's unmistakable action treatment, and always legible.
+ */
+@Composable
+fun FioPrimaryButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
+    enabled: Boolean = true
+) {
+    val colors = LocalFioColors.current
+    val fill = if (enabled) colors.textPrimary else colors.surfaceElevated
+    val content = if (enabled) colors.background else colors.textMuted
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(fill)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (icon != null) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = content,
+                modifier = Modifier.size(17.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+        }
+        Text(
+            text = text,
+            style = FioType.label,
+            color = content,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
+
+/** Quiet companion action: tonal pill, no border. */
+@Composable
+fun FioSecondaryButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
+    enabled: Boolean = true
+) {
+    val colors = LocalFioColors.current
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(colors.surfaceElevated)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 18.dp, vertical = 11.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (icon != null) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (enabled) colors.textPrimary else colors.textMuted,
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(modifier = Modifier.width(7.dp))
+        }
+        Text(
+            text = text,
+            style = FioType.label,
+            color = if (enabled) colors.textPrimary else colors.textMuted
+        )
+    }
+}
+
+/** A settings/list row: title, a short plain-English subtitle, optional trailing. */
+@Composable
+fun FioRow(
+    title: String,
+    modifier: Modifier = Modifier,
+    subtitle: String? = null,
+    leading: (@Composable () -> Unit)? = null,
+    trailing: (@Composable () -> Unit)? = null,
+    onClick: (() -> Unit)? = null
+) {
+    val colors = LocalFioColors.current
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .then(
+                if (onClick != null) Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable(onClick = onClick)
+                    .padding(vertical = 7.dp)
+                else Modifier.padding(vertical = 7.dp)
+            ),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (leading != null) {
+            leading()
+            Spacer(modifier = Modifier.width(12.dp))
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = title, style = FioType.body, color = colors.textPrimary)
+            if (!subtitle.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(1.dp))
+                Text(text = subtitle, style = FioType.caption, color = colors.textMuted)
+            }
+        }
+        if (trailing != null) {
+            Spacer(modifier = Modifier.width(10.dp))
+            trailing()
+        }
+    }
+}
+
+/** Selectable pill chip (filters, subject tabs, tags). */
+@Composable
+fun FioPill(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val colors = LocalFioColors.current
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(if (selected) colors.textPrimary else colors.surfaceElevated)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 15.dp, vertical = 9.dp)
+    ) {
+        Text(
+            text = text,
+            style = FioType.label,
+            color = if (selected) colors.background else colors.textSecondary,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+        )
+    }
+}
+
+/** Thin mint progress line used in cards and stats. */
+@Composable
+fun FioProgressLine(fraction: Float, modifier: Modifier = Modifier) {
+    val colors = LocalFioColors.current
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(4.dp)
+            .clip(RoundedCornerShape(999.dp))
+            .background(colors.border)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .fillMaxWidth(fraction.coerceIn(0f, 1f))
+                .clip(RoundedCornerShape(999.dp))
+                .background(colors.accent)
+        )
+    }
 }

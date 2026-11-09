@@ -790,16 +790,14 @@ fun StudyCompanionScreen(
                 padding = PaddingValues(12.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(imageVector = Icons.Default.AutoAwesome, contentDescription = null, tint = colors.primary, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
                     // Claude-style: the conversation's own title, auto-built
                     // from the first question of the session.
                     Text(
                         text = chatTitle,
                         color = colors.textPrimary,
-                        fontSize = 13.sp,
+                        fontSize = 17.sp,
                         fontWeight = FontWeight.SemiBold,
-                        letterSpacing = (-0.1).sp,
+                        letterSpacing = (-0.2).sp,
                         maxLines = 1,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f).testTag("chat_title")
@@ -810,15 +808,15 @@ fun StudyCompanionScreen(
                             onClick = { chatPendingDelete = true },
                             contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
                         ) {
-                            Text("Delete Chat", color = colors.textMuted, fontSize = 10.sp)
+                            Text("Delete", color = colors.textMuted, fontSize = 11.sp)
                         }
                     }
                 }
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "Wingman · ${currentCourse?.name ?: "No Subject Selected"} — answers, images, summaries",
+                    text = "Wingman · ${currentCourse?.name ?: "No subject selected"}",
                     color = colors.textMuted,
-                    fontSize = 11.sp,
+                    fontSize = 11.5.sp,
                     maxLines = 1,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
@@ -849,27 +847,27 @@ fun StudyCompanionScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
+                        .clip(RoundedCornerShape(999.dp))
                         .background(colors.surfaceElevated)
                         .testTag("chat_tabs")
-                        .padding(2.dp),
-                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                        .padding(3.dp),
+                    horizontalArrangement = Arrangement.spacedBy(3.dp)
                 ) {
                     listOf("Chat" to 0, "History (${courseChatMessages.size})" to 1).forEach { (tabLabel, tabIndex) ->
                         val isSelected = chatTab == tabIndex
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .clip(RoundedCornerShape(9.dp))
-                                .background(if (isSelected) colors.primaryContainer else Color.Transparent)
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(if (isSelected) colors.textPrimary else Color.Transparent)
                                 .clickable { chatTab = tabIndex }
-                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                                .padding(horizontal = 8.dp, vertical = 7.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
                                 text = tabLabel,
-                                color = if (isSelected) colors.primary else colors.textMuted,
-                                fontSize = 11.sp,
+                                color = if (isSelected) colors.background else colors.textMuted,
+                                fontSize = 11.5.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 maxLines = 1
                             )
@@ -889,17 +887,16 @@ fun StudyCompanionScreen(
                         Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
                             Box(
                                 modifier = Modifier
-                                    .fillMaxWidth(0.86f)
-                                    .clip(RoundedCornerShape(16.dp))
-                                    .background(colors.primary.copy(alpha = 0.14f))
-                                    .border(1.dp, colors.primary.copy(alpha = 0.28f), RoundedCornerShape(16.dp))
-                                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                                    .fillMaxWidth(0.88f)
+                                    .clip(RoundedCornerShape(18.dp))
+                                    .background(colors.surfaceElevated)
+                                    .padding(horizontal = 14.dp, vertical = 10.dp)
                             ) {
                                 Text(
                                     text = msg.text,
                                     color = colors.textPrimary,
-                                    fontSize = 12.sp,
-                                    lineHeight = 17.sp
+                                    fontSize = 13.5.sp,
+                                    lineHeight = 20.sp
                                 )
                             }
                             Spacer(modifier = Modifier.height(4.dp))
@@ -943,7 +940,7 @@ fun StudyCompanionScreen(
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 FioMarkdown(
                                     text = msg.text,
-                                    baseFontSize = 12.sp
+                                    baseFontSize = 13.5.sp
                                 )
                                 if (msg.aiImagePaths.isNotEmpty()) {
                                     AiImageStrip(
@@ -1205,9 +1202,9 @@ fun StudyCompanionScreen(
                             onValueChange = { aiQuery = it },
                             placeholder = {
                                 Text(
-                                    if (currentCourse != null) "Reply to Wingman..." else "Select a subject first...",
+                                    if (currentCourse != null) "Message Wingman" else "Choose a subject first",
                                     color = colors.textMuted,
-                                    fontSize = 12.sp
+                                    fontSize = 13.sp
                                 )
                             },
                             modifier = Modifier.weight(1f).testTag("course_ai_query_input"),
@@ -1218,7 +1215,7 @@ fun StudyCompanionScreen(
                                 unfocusedBorderColor = Color.Transparent,
                                 focusedContainerColor = Color.Transparent,
                                 unfocusedContainerColor = Color.Transparent,
-                                cursorColor = colors.primary,
+                                cursorColor = colors.accent,
                                 focusedTextColor = colors.textPrimary,
                                 unfocusedTextColor = colors.textPrimary
                             )
@@ -1239,13 +1236,13 @@ fun StudyCompanionScreen(
                         },
                         enabled = currentCourse != null,
                         modifier = Modifier
-                            .size(46.dp)
+                            .size(48.dp)
                             .clip(CircleShape)
                             .background(
                                 when {
-                                    isAiLoading -> colors.primaryContainer
-                                    (aiQuery.isNotBlank() || coursePhotoUri != null) && currentCourse != null -> colors.primary
-                                    else -> colors.surface
+                                    isAiLoading -> colors.surfaceElevated
+                                    (aiQuery.isNotBlank() || coursePhotoUri != null) && currentCourse != null -> colors.textPrimary
+                                    else -> colors.surfaceElevated
                                 }
                             )
                             .testTag("course_ai_query_submit")
@@ -1255,10 +1252,10 @@ fun StudyCompanionScreen(
                         } else {
                             val readyToSend = (aiQuery.isNotBlank() || coursePhotoUri != null) && currentCourse != null
                             Icon(
-                                imageVector = Icons.Default.Send,
-                                contentDescription = "Query",
-                                tint = if (readyToSend) Color.White else colors.textMuted,
-                                modifier = Modifier.size(19.dp)
+                                imageVector = Icons.Default.ArrowUpward,
+                                contentDescription = "Send",
+                                tint = if (readyToSend) colors.background else colors.textMuted,
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }
