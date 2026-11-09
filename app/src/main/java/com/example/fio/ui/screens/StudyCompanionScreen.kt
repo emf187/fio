@@ -895,8 +895,8 @@ fun StudyCompanionScreen(
                                 Text(
                                     text = msg.text,
                                     color = colors.textPrimary,
-                                    fontSize = 13.5.sp,
-                                    lineHeight = 20.sp
+                                    fontSize = (13.5f * settings.fontScale).sp,
+                                    lineHeight = (20f * settings.fontScale).sp
                                 )
                             }
                             Spacer(modifier = Modifier.height(4.dp))
@@ -940,7 +940,7 @@ fun StudyCompanionScreen(
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 FioMarkdown(
                                     text = msg.text,
-                                    baseFontSize = 13.5.sp
+                                    baseFontSize = (13.5f * settings.fontScale).sp
                                 )
                                 if (msg.aiImagePaths.isNotEmpty()) {
                                     AiImageStrip(

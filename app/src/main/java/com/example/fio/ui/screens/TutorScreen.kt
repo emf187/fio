@@ -121,7 +121,12 @@ fun TutorScreen(
     ) {
         // --- 1. Course Selector ---
         item {
-            Text("Tutor Mode: Select Course", color = colors.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            com.example.fio.ui.components.FioScreenHeader(
+                title = "Tutor",
+                subtitle = "Practice, get graded, see what to revise."
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            Text("Subject", style = com.example.fio.ui.theme.FioType.label, color = colors.textSecondary)
             Spacer(modifier = Modifier.height(6.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),

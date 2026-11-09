@@ -187,11 +187,11 @@ fun FioAppContent(
     ) {
         Scaffold(
             topBar = {
-                val screenTitle = if (currentScreen == FioScreen.DASHBOARD) {
-                    "Fio"
-                } else {
-                    currentScreen.title
-                }
+                // Screens with their own large heading keep the top bar icon-only;
+                // two titles on one screen was the biggest source of clutter.
+                val hasOwnHeading = currentScreen != FioScreen.STUDY &&
+                    currentScreen != FioScreen.CALCULATOR
+                val screenTitle = if (hasOwnHeading) "" else currentScreen.title
                 FioTopBar(
                     title = screenTitle,
                     onOpenNav = { coroutineScope.launch { drawerState.open() } },

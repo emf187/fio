@@ -178,10 +178,10 @@ fun HealthTrackingScreen(repository: FioRepository) {
     ) {
         // --- Header ---
         item {
-            Column {
-                Text("Health, Sleep & Meal Log", color = colors.textPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                Text("Simple, distraction-free logging with zero calorie or weight tracking", color = colors.textMuted, fontSize = 11.sp)
-            }
+            com.example.fio.ui.components.FioScreenHeader(
+                title = "Health",
+                subtitle = "Sleep and meals, logged simply."
+            )
         }
 
         // --- 1. Sleep Tracker Card ---

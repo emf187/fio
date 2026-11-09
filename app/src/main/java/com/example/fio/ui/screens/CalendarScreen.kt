@@ -383,38 +383,41 @@ fun CalendarScreen(repository: FioRepository) {
         contentPadding = PaddingValues(vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // --- 1. Top Header Actions ---
+        // --- 1. Header ---
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Calendar & Scheduler", color = colors.textPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                    Text("Interactive visual calendar & phone reminders sync", color = colors.textMuted, fontSize = 11.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                }
+                com.example.fio.ui.components.FioScreenHeader(
+                    title = "Calendar",
+                    subtitle = "Your days, at a glance.",
+                    modifier = Modifier.weight(1f)
+                )
 
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    IconButton(
-                        onClick = { showIcsImportDialog = true },
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(
                         modifier = Modifier
-                            .size(38.dp)
-                            .clip(RoundedCornerShape(10.dp))
+                            .size(42.dp)
+                            .clip(RoundedCornerShape(999.dp))
                             .background(colors.surfaceElevated)
+                            .clickable { showIcsImportDialog = true },
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(imageVector = Icons.Default.FileDownload, contentDescription = "Import .ics", tint = colors.primary, modifier = Modifier.size(18.dp))
+                        Icon(imageVector = Icons.Default.FileDownload, contentDescription = "Import a school calendar", tint = colors.textPrimary, modifier = Modifier.size(18.dp))
                     }
 
-                    IconButton(
-                        onClick = { openEventEditor(null) },
+                    Box(
                         modifier = Modifier
-                            .size(38.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(colors.primary)
-                            .testTag("add_calendar_event_button")
+                            .size(42.dp)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(colors.textPrimary)
+                            .clickable { openEventEditor(null) }
+                            .testTag("add_calendar_event_button"),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(imageVector = Icons.Default.Add, contentDescription = "Add Event", tint = Color.White, modifier = Modifier.size(18.dp))
+                        Icon(imageVector = Icons.Default.Add, contentDescription = "Add event", tint = colors.background, modifier = Modifier.size(19.dp))
                     }
                 }
             }

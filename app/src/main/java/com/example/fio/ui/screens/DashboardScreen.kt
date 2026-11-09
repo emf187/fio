@@ -493,7 +493,7 @@ fun DashboardScreen(
                 Text("No events scheduled for today. Add one above or in Calendar.", color = colors.textMuted, fontSize = 12.sp)
             }
         } else {
-            items(events, key = { it.id }) { event ->
+            items(events.take(3), key = { it.id }) { event ->
                 val typeColor = when (event.type) {
                     EventType.STUDY -> colors.primary
                     EventType.GYM, EventType.JOG -> colors.warning
@@ -540,11 +540,6 @@ fun DashboardScreen(
                                 color = colors.textSecondary,
                                 fontSize = 11.sp
                             )
-                            Text(
-                                text = "Logged: ${formatTimestamp(event.loggedAtMillis)}${if (event.editedAtMillis != null) " • Edited: ${formatTimestamp(event.editedAtMillis)}" else ""}",
-                                color = colors.textMuted,
-                                fontSize = 9.sp
-                            )
                         }
                     }
                 }
@@ -552,16 +547,15 @@ fun DashboardScreen(
         }
 
         // --- 5. Habits ---
-        item {
-            com.example.fio.ui.components.FioSectionHeader(title = "Habits")
-        }
-
-        if (habits.isEmpty()) {
+        if (habits.isNotEmpty()) {
             item {
-                Text("No habits yet. Add one in Progress.", color = colors.textMuted, style = com.example.fio.ui.theme.FioType.small)
+                com.example.fio.ui.components.FioSectionHeader(
+                    title = "Habits",
+                    actionLabel = "All",
+                    onAction = { onNavigate(FioScreen.STATS) }
+                )
             }
-        } else {
-            items(habits, key = { it.id }) { habit ->
+            items(habits.take(4), key = { it.id }) { habit ->
                 val todayStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
                 val isCompleted = habit.completedDates.contains(todayStr)
 
@@ -593,9 +587,6 @@ fun DashboardScreen(
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(text = habit.name, color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                            if (habit.description.isNotBlank()) {
-                                Text(text = habit.description, color = colors.textMuted, fontSize = 11.sp)
-                            }
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(imageVector = Icons.Default.LocalFireDepartment, contentDescription = null, tint = colors.warning, modifier = Modifier.size(15.dp))
@@ -607,16 +598,15 @@ fun DashboardScreen(
         }
 
         // --- 6. Goals ---
-        item {
-            com.example.fio.ui.components.FioSectionHeader(title = "Goals")
-        }
-
-        if (goals.isEmpty()) {
+        if (goals.isNotEmpty()) {
             item {
-                Text("No goals yet. Add one in Progress.", color = colors.textMuted, style = com.example.fio.ui.theme.FioType.small)
+                com.example.fio.ui.components.FioSectionHeader(
+                    title = "Goals",
+                    actionLabel = "All",
+                    onAction = { onNavigate(FioScreen.STATS) }
+                )
             }
-        } else {
-            items(goals, key = { it.id }) { goal ->
+            items(goals.take(3), key = { it.id }) { goal ->
                 val progressPercent = ((goal.currentValue / goal.targetValue) * 100).coerceIn(0.0, 100.0)
                 FioCard(
                     backgroundColor = colors.surface,

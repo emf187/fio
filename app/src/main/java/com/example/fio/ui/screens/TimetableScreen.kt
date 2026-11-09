@@ -101,13 +101,19 @@ fun TimetableScreen(repository: FioRepository) {
             .fillMaxSize()
             .background(colors.background)
     ) {
+        com.example.fio.ui.components.FioScreenHeader(
+            title = "Timetable",
+            subtitle = "Your class week. Each period can ring an alarm.",
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp)
+        )
+
         // Day selector — Mon..Sun chips.
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                .padding(horizontal = 16.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             DAY_LABELS.forEachIndexed { index, label ->
                 val day = index + 1
@@ -115,15 +121,15 @@ fun TimetableScreen(repository: FioRepository) {
                 val isToday = day == todayMonSunIndex()
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(if (isSelected) colors.primary else colors.surfaceElevated)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(if (isSelected) colors.textPrimary else colors.surfaceElevated)
                         .clickable { selectedDay = day }
-                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                        .padding(horizontal = 14.dp, vertical = 9.dp)
                 ) {
                     Text(
-                        text = if (isToday) "$label ·" else label,
-                        color = if (isSelected) androidx.compose.ui.graphics.Color.White else colors.textPrimary,
-                        fontSize = 12.sp,
+                        text = label,
+                        color = if (isSelected) colors.background else colors.textPrimary,
+                        fontSize = 12.5.sp,
                         fontWeight = FontWeight.Medium
                     )
                 }

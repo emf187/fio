@@ -437,24 +437,9 @@ fun SettingsScreen(repository: FioRepository) {
                     },
                     modifier = Modifier.fillMaxWidth().testTag("save_ai_settings_button")
                 )
-            }
-        }
 
-        // --- 2b. AI extras: related images in answers ---
-        item {
-            FioCard(
-                backgroundColor = colors.surface,
-                borderColor = colors.border,
-                padding = PaddingValues(18.dp)
-            ) {
-                Text("AI answers", style = FioType.section, color = colors.textPrimary)
-                Spacer(modifier = Modifier.height(3.dp))
-                Text(
-                    text = "Math is always shown properly. Wingman can also include a useful picture when one helps.",
-                    style = FioType.small,
-                    color = colors.textMuted
-                )
                 Spacer(modifier = Modifier.height(4.dp))
+                FioDivider()
                 FioRow(
                     title = "Show pictures in answers",
                     subtitle = if (settings.showAiImages)
@@ -620,6 +605,30 @@ fun SettingsScreen(repository: FioRepository) {
                         )
                     }
                 )
+
+                FioDivider()
+
+                FioRow(
+                    title = "Text size",
+                    subtitle = "How large answers and notes read.",
+                    trailing = {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf(
+                                "S" to 0.92f,
+                                "M" to 1.0f,
+                                "L" to 1.14f
+                            ).forEach { (label, scale) ->
+                                com.example.fio.ui.components.FioPill(
+                                    text = label,
+                                    selected = kotlin.math.abs(settings.fontScale - scale) < 0.03f,
+                                    onClick = {
+                                        repository.updateSettings(settings.copy(fontScale = scale))
+                                    }
+                                )
+                            }
+                        }
+                    }
+                )
             }
         }
 
@@ -772,36 +781,7 @@ fun SettingsScreen(repository: FioRepository) {
             }
         }
 
-        // --- 6. About this app ---
-        item {
-            FioCard(
-                backgroundColor = colors.surface,
-                borderColor = colors.border,
-                padding = PaddingValues(18.dp)
-            ) {
-                Text("About this app", style = FioType.section, color = colors.textPrimary)
-                Spacer(modifier = Modifier.height(3.dp))
-                Text(
-                    "Fio is open source. The full Android project can be downloaded or synced from GitHub at any time.",
-                    style = FioType.small,
-                    color = colors.textMuted
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                FioSecondaryButton(
-                    text = "Open the source on GitHub",
-                    icon = Icons.Default.Code,
-                    onClick = {
-                        runCatching {
-                            context.startActivity(
-                                Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/emf187/fio"))
-                            )
-                        }
-                    }
-                )
-            }
-        }
-
-        // --- 7. About the maker ---
+        // --- 6. About ---
         item {
             FioCard(
                 backgroundColor = colors.surface,
@@ -825,6 +805,17 @@ fun SettingsScreen(repository: FioRepository) {
                         runCatching {
                             context.startActivity(
                                 Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/emf187"))
+                            )
+                        }
+                    }
+                )
+                AboutRow(
+                    label = "Source",
+                    value = "fio on GitHub",
+                    onClick = {
+                        runCatching {
+                            context.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/emf187/fio"))
                             )
                         }
                     }

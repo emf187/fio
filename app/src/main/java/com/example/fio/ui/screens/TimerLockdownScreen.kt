@@ -193,12 +193,12 @@ fun TimerLockdownScreen(repository: FioRepository) {
         contentPadding = PaddingValues(vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // --- 1. Header & Title ---
+        // --- 1. Header ---
         item {
-            Column {
-                Text("Focus Timer & Lockdown Mode", color = colors.textPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                Text("High-discipline academic time blocking with anti-distraction strikes", color = colors.textMuted, fontSize = 11.sp)
-            }
+            com.example.fio.ui.components.FioScreenHeader(
+                title = "Focus",
+                subtitle = "One session at a time. Leaving early costs a strike."
+            )
         }
 
         // --- 2. Main Clock Card ---
