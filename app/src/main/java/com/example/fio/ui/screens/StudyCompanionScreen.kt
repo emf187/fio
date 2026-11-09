@@ -271,6 +271,7 @@ fun StudyCompanionScreen(
     var showAddCourseDialog by remember { mutableStateOf(false) }
     var showAddDocDialog by remember { mutableStateOf(false) }
     var newCourseName by remember { mutableStateOf("") }
+    var newCourseDetails by remember { mutableStateOf("") }
     var newDocTitle by remember { mutableStateOf("") }
     var newDocContent by remember { mutableStateOf("") }
 
@@ -522,18 +523,34 @@ fun StudyCompanionScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "Enter course/subject name. You can immediately pick PDF, EPUB, Docs, Sheets, or MD files from your device.",
+                        text = "Name the subject and add any details now — lecturer, syllabus, what to bring. You can attach files right after.",
                         color = colors.textMuted,
                         fontSize = 12.sp
                     )
                     OutlinedTextField(
                         value = newCourseName,
                         onValueChange = { newCourseName = it },
-                        label = { Text("Course Title (e.g., Biology, Philosophy)", color = colors.textMuted) },
+                        label = { Text("Title (e.g., Biology, Philosophy)", color = colors.textMuted) },
                         singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
                         modifier = Modifier.fillMaxWidth().testTag("new_course_input"),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = colors.primary,
+                            focusedBorderColor = colors.accent,
+                            unfocusedBorderColor = colors.border,
+                            focusedTextColor = colors.textPrimary,
+                            unfocusedTextColor = colors.textPrimary
+                        )
+                    )
+                    OutlinedTextField(
+                        value = newCourseDetails,
+                        onValueChange = { newCourseDetails = it },
+                        label = { Text("Details (optional)", color = colors.textMuted) },
+                        minLines = 2,
+                        maxLines = 4,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth().testTag("new_course_details_input"),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = colors.accent,
                             unfocusedBorderColor = colors.border,
                             focusedTextColor = colors.textPrimary,
                             unfocusedTextColor = colors.textPrimary
@@ -546,9 +563,14 @@ fun StudyCompanionScreen(
                     OutlinedButton(
                         onClick = {
                             if (newCourseName.isNotBlank()) {
-                                val created = repository.addCourse(newCourseName.trim(), selectedSection)
+                                val created = repository.addCourse(
+                                    newCourseName.trim(),
+                                    selectedSection,
+                                    newCourseDetails.trim()
+                                )
                                 selectedCourseId = created.id
                                 newCourseName = ""
+                                newCourseDetails = ""
                                 showAddCourseDialog = false
                             }
                         },
@@ -565,10 +587,15 @@ fun StudyCompanionScreen(
                     Button(
                         onClick = {
                             if (newCourseName.isNotBlank()) {
-                                val created = repository.addCourse(newCourseName.trim(), selectedSection)
+                                val created = repository.addCourse(
+                                    newCourseName.trim(),
+                                    selectedSection,
+                                    newCourseDetails.trim()
+                                )
                                 selectedCourseId = created.id
                                 targetCourseIdForImport = created.id
                                 newCourseName = ""
+                                newCourseDetails = ""
                                 showAddCourseDialog = false
                                 // Automatically open file picker to select docs
                                 documentPickerLauncher.launch(
