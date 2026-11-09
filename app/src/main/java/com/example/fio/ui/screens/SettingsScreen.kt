@@ -730,7 +730,7 @@ fun SettingsScreen(repository: FioRepository) {
                 }
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    "Clone or SYNC your ENTIRE profile to another device over the same Wi-Fi network — courses, books & PDFs, notes with images, chats, gallery photos, flashcards, tutor sessions, stats, calendar, timetable + alarms, settings and your AI key. Nothing is left out.",
+                    "Clone or SYNC your ENTIRE profile to another device over the same Wi-Fi — courses, books & PDFs, notes with images, chats, gallery photos, flashcards, tutor sessions, stats, calendar, timetable + alarms, settings and your AI key. Devices find each other automatically — no addresses to type.",
                     color = colors.textMuted,
                     fontSize = 11.sp
                 )
@@ -783,7 +783,7 @@ fun SettingsScreen(repository: FioRepository) {
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    "Tip: use Sync after you've been studying on either device — records merge with the newest copy of each item winning, so the device you used most keeps its progress.",
+                    "Tip: use Sync after you've been studying on either device — records merge with the newest copy of each item winning, so the device you used most keeps its progress. Both devices must be on the same Wi-Fi; the receiver lists nearby devices automatically.",
                     color = colors.textMuted,
                     fontSize = 10.sp
                 )

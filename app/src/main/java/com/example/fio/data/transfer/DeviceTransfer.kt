@@ -10,6 +10,8 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.InputStream
+import java.net.DatagramPacket
+import java.net.DatagramSocket
 import java.net.HttpURLConnection
 import java.net.Inet4Address
 import java.net.InetAddress
@@ -36,6 +38,21 @@ import java.util.zip.ZipOutputStream
 
 /** Default transfer port; bumped automatically if already in use. */
 const val FIO_TRANSFER_PORT = 44841
+
+/** UDP port both apps use to find each other on the same Wi-Fi (no URLs). */
+const val FIO_DISCOVERY_PORT = 44842
+private const val FIO_DISCOVERY_MAGIC = "FIO_DISCOVER_V1"
+
+/** A sender discovered on the local network. */
+data class DiscoveredDevice(
+    val displayName: String,
+    val ip: String,
+    val port: Int,
+    val summary: TransferSummary,
+    val bundleBytes: Long = 0L
+) {
+    val address: String get() = "http://$ip:$port"
+}
 
 /** Snapshot of what a bundle contains, for UI summaries. */
 data class TransferSummary(
@@ -245,6 +262,8 @@ class TransferServer(
 ) {
     private var serverSocket: ServerSocket? = null
     private var acceptThread: Thread? = null
+    private var discoverySocket: DatagramSocket? = null
+    private var discoveryThread: Thread? = null
 
     @Volatile private var running = false
     @Volatile var activePort: Int = FIO_TRANSFER_PORT
@@ -290,6 +309,8 @@ class TransferServer(
                 }
                 activePort = port
                 serverSocket = server
+                startDiscovery()
+                onLog("Ready to be discovered on this Wi-Fi — no address needed on the other device.")
                 onLog("Listening on http://${FioWifi.localIp() ?: "Lan"}:$port — keep this screen open.")
 
                 while (running) {
@@ -311,8 +332,50 @@ class TransferServer(
     fun stop() {
         running = false
         runCatching { serverSocket?.close() }
+        runCatching { discoverySocket?.close() }
+        runCatching { discoveryThread?.interrupt() }
         bundleFile?.delete()
         bundleFile = null
+    }
+
+    /**
+     * Answers "who is sending?" broadcasts so the receiving device can list this
+     * phone/tablet by name — the Xender-style flow with no address typing.
+     */
+    private fun startDiscovery() {
+        discoveryThread = Thread({
+            try {
+                val socket = DatagramSocket(null).apply {
+                    reuseAddress = true
+                    broadcast = true
+                    bind(java.net.InetSocketAddress(FIO_DISCOVERY_PORT))
+                }
+                discoverySocket = socket
+                val buffer = ByteArray(512)
+                while (running) {
+                    try {
+                        val packet = DatagramPacket(buffer, buffer.size)
+                        socket.receive(packet)
+                        val text = String(packet.data, 0, packet.length, Charsets.UTF_8).trim()
+                        if (text != FIO_DISCOVERY_MAGIC) continue
+                        val summary = synchronized(bundleLock) { bundleSummary }
+                        val reply = JSONObject()
+                            .put("app", "Fio")
+                            .put("device", repo.profileName.value.ifBlank { "Fio device" })
+                            .put("port", activePort)
+                            .put("summary", summary?.summaryJson() ?: JSONObject())
+                            .put("bundleBytes", synchronized(bundleLock) { bundleFile?.length() ?: 0L })
+                        val bytes = reply.toString().toByteArray(Charsets.UTF_8)
+                        socket.send(DatagramPacket(bytes, bytes.size, packet.address, packet.port))
+                        onLog("Nearby device found: ${packet.address?.hostAddress}")
+                    } catch (e: Exception) {
+                        if (!running) break
+                    }
+                }
+            } catch (e: Exception) {
+                if (running) onLog("Nearby discovery unavailable — use the address below.")
+            }
+        }, "fio-transfer-discovery").apply { start() }
     }
 
     private fun handleClient(client: Socket) {
@@ -450,6 +513,67 @@ object FioWifi {
 
 /** The receiving side: probe an address, then download + one-tap restore. */
 object FioTransferClient {
+
+    /**
+     * Scans the Wi-Fi for Fio devices currently sending a profile — Xender style,
+     * no address typing. Blocking for up to [timeoutMs]; call on a background thread.
+     * Devices are reported as soon as they answer.
+     */
+    fun discoverDevices(
+        timeoutMs: Long = 4500,
+        onFound: (DiscoveredDevice) -> Unit
+    ) {
+        val socket = DatagramSocket().apply {
+            broadcast = true
+            soTimeout = 500
+        }
+        try {
+            val payload = FIO_DISCOVERY_MAGIC.toByteArray(Charsets.UTF_8)
+            val targets = mutableListOf<InetAddress>()
+            runCatching { targets += InetAddress.getByName("255.255.255.255") }
+            // Also aim at this subnet's directed broadcast (some networks drop 255.255.255.255).
+            FioWifi.localIp()?.substringBeforeLast('.')?.let { prefix ->
+                runCatching { targets += InetAddress.getByName("$prefix.255") }
+            }
+            targets.distinctBy { it.hostAddress }.forEach { target ->
+                runCatching {
+                    socket.send(DatagramPacket(payload, payload.size, target, FIO_DISCOVERY_PORT))
+                }
+            }
+            val deadline = System.currentTimeMillis() + timeoutMs
+            val seen = mutableSetOf<String>()
+            val buffer = ByteArray(4096)
+            while (System.currentTimeMillis() < deadline) {
+                try {
+                    val packet = DatagramPacket(buffer, buffer.size)
+                    socket.receive(packet)
+                    val json = runCatching {
+                        JSONObject(String(packet.data, 0, packet.length, Charsets.UTF_8))
+                    }.getOrNull() ?: continue
+                    if (json.optString("app") != "Fio") continue
+                    val ip = packet.address?.hostAddress ?: continue
+                    val port = json.optInt("port", FIO_TRANSFER_PORT)
+                    val key = "$ip:$port"
+                    if (!seen.add(key)) continue
+                    onFound(
+                        DiscoveredDevice(
+                            displayName = json.optString("device", "Fio device"),
+                            ip = ip,
+                            port = port,
+                            summary = TransferSummary.fromJson(
+                                json.optJSONObject("summary") ?: JSONObject()
+                            ),
+                            bundleBytes = json.optLong("bundleBytes", 0L)
+                        )
+                    )
+                } catch (_: java.net.SocketTimeoutException) {
+                    // keep scanning until the deadline
+                }
+            }
+        } finally {
+            runCatching { socket.close() }
+        }
+    }
 
     /** Blocking: wrap in a background dispatcher. Sender's base + content offer. */
     fun probe(rawAddress: String): Pair<String, TransferSummary> {
