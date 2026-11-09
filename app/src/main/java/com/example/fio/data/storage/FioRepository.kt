@@ -19,6 +19,15 @@ class FioRepository(private val context: Context) {
         context.getSharedPreferences("fio_storage_v2", Context.MODE_PRIVATE)
 
     /**
+     * Primary durable copy of app state: a JSON file on internal storage.
+     * SharedPreferences remains as a synchronous mirror. The old code saved
+     * only with prefs.apply() (async) — on low-RAM devices Android can kill the
+     * process before that write flushes, which made the app look freshly
+     * installed on next start.
+     */
+    private val stateFile = File(context.filesDir, "fio_state.json")
+
+    /**
      * Document bodies (books, PDFs, docs) live in their own files instead of the
      * SharedPreferences blob. This keeps every save/load a few KB instead of many MB,
      * which is what made the app feel slow and janky before.
@@ -109,11 +118,16 @@ class FioRepository(private val context: Context) {
 
     private fun loadData() {
         _profileName.value = prefs.getString("profile_name", "") ?: ""
-        val json = prefs.getString("backup_json", null)
-        if (!json.isNullOrBlank()) {
-            parseState(json)
-            hydrateDocumentContents()
-        }
+        // Prefer the atomic state file; fall back to the legacy prefs blob.
+        // If one copy is corrupt, try the other before starting empty.
+        val fileJson = runCatching {
+            if (stateFile.exists()) stateFile.readText() else null
+        }.getOrNull()
+        val prefJson = prefs.getString("backup_json", null)
+        var loaded = false
+        if (!fileJson.isNullOrBlank()) loaded = parseState(fileJson)
+        if (!loaded && !prefJson.isNullOrBlank()) loaded = parseState(prefJson)
+        if (loaded) hydrateDocumentContents()
         // Load settings
         val geminiBase = "https://generativelanguage.googleapis.com/v1beta/openai"
         val geminiModel = "gemini-3.8-flash"
@@ -1493,6 +1507,22 @@ class FioRepository(private val context: Context) {
      */
     private fun saveAll() {
         val json = buildExportJson(pretty = false, includeDocumentContents = false)
-        prefs.edit().putString("backup_json", json).apply()
+        // Durable first: write-then-rename so a kill mid-write cannot corrupt
+        // the previous snapshot.
+        try {
+            val tmp = File(context.filesDir, "fio_state.json.tmp")
+            tmp.writeText(json)
+            if (!tmp.renameTo(stateFile)) {
+                stateFile.delete()
+                if (!tmp.renameTo(stateFile)) stateFile.writeText(json)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        // Synchronous mirror in prefs (commit, not apply) as a second copy.
+        prefs.edit().putString("backup_json", json).commit()
     }
+
+    /** Flushes the current state to disk now (call when backgrounding). */
+    fun flushNow() = saveAll()
 }

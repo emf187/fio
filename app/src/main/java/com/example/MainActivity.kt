@@ -58,6 +58,13 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onStop() {
+        super.onStop()
+        // Durable snapshot before the OS can kill the process — fixes the
+        // "resets like a fresh install" behaviour on low-RAM devices.
+        runCatching { repository.flushNow() }
+    }
 }
 
 @Composable
