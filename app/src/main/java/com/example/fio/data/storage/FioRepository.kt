@@ -136,8 +136,8 @@ class FioRepository(private val context: Context) {
             aiBaseUrl = prefs.getString("ai_base_url", geminiBase) ?: geminiBase,
             aiApiKey = prefs.getString("ai_api_key", "") ?: "",
             aiModelName = prefs.getString("ai_model_name", geminiModel) ?: geminiModel,
-            theme = prefs.getString("app_theme", "OBSIDIAN_LIGHT") ?: "OBSIDIAN_LIGHT",
-            accentColor = prefs.getString("accent_color", "BLUE") ?: "BLUE",
+            theme = prefs.getString("app_theme", "OBSIDIAN_PURPLE") ?: "OBSIDIAN_PURPLE",
+            accentColor = prefs.getString("accent_color", "MINT") ?: "MINT",
             fontScale = prefs.getFloat("font_scale", 1.0f),
             reduceMotion = prefs.getBoolean("reduce_motion", false),
             gracePeriodSeconds = prefs.getInt("grace_period", 15),
@@ -148,20 +148,25 @@ class FioRepository(private val context: Context) {
             showAiImages = prefs.getBoolean("show_ai_images", true)
         )
 
-        // One-time migration to the Notion-style look: users who never picked a
-        // theme themselves get the clean light palette (white page, gray blocks,
-        // blue accent). Anyone who already chose a theme/accent keeps theirs.
-        if (!prefs.getBoolean("theme_migrated_notion2", false)) {
+        // Fio 2.0 migration: older builds shipped the light + blue default.
+        // Move anyone still on those defaults to the new Midnight + Mint identity;
+        // explicit choices (any other theme/accent) are preserved.
+        if (!prefs.getBoolean("theme_migrated_v2", false)) {
             val storedTheme = prefs.getString("app_theme", null)
             val storedAccent = prefs.getString("accent_color", null)
-            if (storedTheme == null && storedAccent == null) {
+            val onOldDefaults = storedTheme == null || storedTheme == "OBSIDIAN_LIGHT" ||
+                storedAccent == null || storedAccent == "BLUE"
+            if (onOldDefaults) {
                 prefs.edit()
-                    .putString("app_theme", "OBSIDIAN_LIGHT")
-                    .putString("accent_color", "BLUE")
+                    .putString("app_theme", "OBSIDIAN_PURPLE")
+                    .putString("accent_color", "MINT")
                     .apply()
-                _settings.value = _settings.value.copy(theme = "OBSIDIAN_LIGHT", accentColor = "BLUE")
+                _settings.value = _settings.value.copy(
+                    theme = "OBSIDIAN_PURPLE",
+                    accentColor = "MINT"
+                )
             }
-            prefs.edit().putBoolean("theme_migrated_notion2", true).apply()
+            prefs.edit().putBoolean("theme_migrated_v2", true).apply()
         }
 
         // One-time migration to Google Gemini as the default AI provider:
@@ -675,6 +680,18 @@ class FioRepository(private val context: Context) {
         return course
     }
 
+    /** Renames a subject and stores its longer details (long-press on a subject). */
+    fun updateCourseDetails(courseId: String, name: String, details: String) {
+        _courses.value = _courses.value.map { course ->
+            if (course.id != courseId) course
+            else course.copy(
+                name = name.trim().ifBlank { course.name },
+                description = details.trim()
+            )
+        }
+        saveAll()
+    }
+
     /**
      * Removes a subject (Study / Leisure / Research) and everything that belongs
      * to it: its documents plus stored originals/previews, flashcards, tutor
@@ -843,6 +860,7 @@ class FioRepository(private val context: Context) {
                     .put("id", p.id)
                     .put("title", p.title)
                     .put("room", p.room)
+                    .put("details", p.details)
                     .put("dayOfWeek", p.dayOfWeek)
                     .put("startMinutes", p.startMinutes)
                     .put("endMinutes", p.endMinutes)
@@ -1195,6 +1213,7 @@ class FioRepository(private val context: Context) {
                             id = obj.optString("id", UUID.randomUUID().toString()),
                             title = obj.optString("title", "Period"),
                             room = obj.optString("room", ""),
+                            details = obj.optString("details", ""),
                             dayOfWeek = obj.optInt("dayOfWeek", 1).coerceIn(1, 7),
                             startMinutes = obj.optInt("startMinutes", 540),
                             endMinutes = obj.optInt("endMinutes", 585),
@@ -1216,6 +1235,7 @@ class FioRepository(private val context: Context) {
                     tArr.put(
                         JSONObject()
                             .put("id", p.id).put("title", p.title).put("room", p.room)
+                            .put("details", p.details)
                             .put("dayOfWeek", p.dayOfWeek).put("startMinutes", p.startMinutes)
                             .put("endMinutes", p.endMinutes).put("alarmEnabled", p.alarmEnabled)
                     )

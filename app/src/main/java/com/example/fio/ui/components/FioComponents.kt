@@ -12,7 +12,10 @@ import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -24,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.fio.data.model.CourseSection
 import com.example.fio.data.model.ProposedScheduleChange
 import com.example.fio.data.model.formatTimestamp
 import com.example.fio.ui.theme.FioType
@@ -459,7 +463,8 @@ fun FioPrimaryButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     icon: ImageVector? = null,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    compact: Boolean = false
 ) {
     val colors = LocalFioColors.current
     val fill = if (enabled) colors.textPrimary else colors.surfaceElevated
@@ -469,7 +474,11 @@ fun FioPrimaryButton(
             .clip(RoundedCornerShape(999.dp))
             .background(fill)
             .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 12.dp),
+            .heightIn(min = if (compact) 36.dp else 44.dp)
+            .padding(
+                horizontal = if (compact) 12.dp else 20.dp,
+                vertical = if (compact) 8.dp else 11.dp
+            ),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -478,15 +487,19 @@ fun FioPrimaryButton(
                 imageVector = icon,
                 contentDescription = null,
                 tint = content,
-                modifier = Modifier.size(17.dp)
+                modifier = Modifier.size(if (compact) 15.dp else 17.dp)
             )
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(if (compact) 5.dp else 8.dp))
         }
         Text(
             text = text,
             style = FioType.label,
+            fontSize = if (compact) 12.sp else 13.sp,
             color = content,
-            fontWeight = FontWeight.SemiBold
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            softWrap = false,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
         )
     }
 }
@@ -498,7 +511,8 @@ fun FioSecondaryButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     icon: ImageVector? = null,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    compact: Boolean = false
 ) {
     val colors = LocalFioColors.current
     Row(
@@ -506,7 +520,11 @@ fun FioSecondaryButton(
             .clip(RoundedCornerShape(999.dp))
             .background(colors.surfaceElevated)
             .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 18.dp, vertical = 11.dp),
+            .heightIn(min = if (compact) 36.dp else 44.dp)
+            .padding(
+                horizontal = if (compact) 12.dp else 18.dp,
+                vertical = if (compact) 8.dp else 10.dp
+            ),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -515,14 +533,18 @@ fun FioSecondaryButton(
                 imageVector = icon,
                 contentDescription = null,
                 tint = if (enabled) colors.textPrimary else colors.textMuted,
-                modifier = Modifier.size(16.dp)
+                modifier = Modifier.size(if (compact) 15.dp else 16.dp)
             )
-            Spacer(modifier = Modifier.width(7.dp))
+            Spacer(modifier = Modifier.width(if (compact) 5.dp else 7.dp))
         }
         Text(
             text = text,
             style = FioType.label,
-            color = if (enabled) colors.textPrimary else colors.textMuted
+            fontSize = if (compact) 12.sp else 13.sp,
+            color = if (enabled) colors.textPrimary else colors.textMuted,
+            maxLines = 1,
+            softWrap = false,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
         )
     }
 }
@@ -612,4 +634,79 @@ fun FioProgressLine(fraction: Float, modifier: Modifier = Modifier) {
                 .background(colors.accent)
         )
     }
+}
+
+/**
+ * Edit a subject's title and details. Opened by long-pressing a subject chip in
+ * Study or Tutor, so the whole course can be described (course name, lecturer,
+ * syllabus notes) without hunting through another screen.
+ */
+@Composable
+fun CourseDetailsDialog(
+    course: CourseSection,
+    onDismiss: () -> Unit,
+    onSave: (name: String, details: String) -> Unit,
+    onDelete: (() -> Unit)? = null
+) {
+    val colors = LocalFioColors.current
+    var name by remember(course.id) { mutableStateOf(course.name) }
+    var details by remember(course.id) { mutableStateOf(course.description) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = colors.surface,
+        title = {
+            Text("Subject details", style = FioType.section, color = colors.textPrimary)
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Title", color = colors.textMuted) },
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = colors.accent,
+                        unfocusedBorderColor = colors.border,
+                        focusedTextColor = colors.textPrimary,
+                        unfocusedTextColor = colors.textPrimary
+                    )
+                )
+                OutlinedTextField(
+                    value = details,
+                    onValueChange = { details = it },
+                    label = { Text("Details", color = colors.textMuted) },
+                    minLines = 3,
+                    maxLines = 6,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = colors.accent,
+                        unfocusedBorderColor = colors.border,
+                        focusedTextColor = colors.textPrimary,
+                        unfocusedTextColor = colors.textPrimary
+                    )
+                )
+            }
+        },
+        confirmButton = {
+            FioPrimaryButton(
+                text = "Save",
+                onClick = { onSave(name.trim(), details.trim()) }
+            )
+        },
+        dismissButton = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (onDelete != null) {
+                    TextButton(onClick = onDelete) {
+                        Text("Delete", color = colors.error, fontSize = 13.sp)
+                    }
+                }
+                TextButton(onClick = onDismiss) {
+                    Text("Cancel", color = colors.textSecondary, fontSize = 13.sp)
+                }
+            }
+        }
+    )
 }

@@ -98,6 +98,8 @@ fun TutorScreen(
     var historyPendingClear by remember { mutableStateOf(false) }
     // Long-press target: the single practice session to delete.
     var sessionPendingDelete by remember { mutableStateOf<TutorSession?>(null) }
+    // Long-press on a subject chip: edit its title and details.
+    var courseEditTarget by remember { mutableStateOf<CourseSection?>(null) }
 
     // Photo picker launcher (Zero-permission Android Photo Picker compliant with Google Play)
     val photoPickerLauncher = rememberLauncherForActivityResult(
@@ -136,17 +138,22 @@ fun TutorScreen(
                     val isSelected = c.id == selectedCourseId
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(if (isSelected) colors.primaryContainer else colors.surface)
-                            .border(1.dp, if (isSelected) colors.primary else colors.border, RoundedCornerShape(12.dp))
-                            .clickable { selectedCourseId = c.id }
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                            .widthIn(max = 190.dp)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(if (isSelected) colors.surfaceElevated else colors.surface)
+                            .combinedClickable(
+                                onClick = { selectedCourseId = c.id },
+                                onLongClick = { courseEditTarget = c }
+                            )
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
                     ) {
                         Text(
                             text = c.name,
-                            color = if (isSelected) colors.primary else colors.textSecondary,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium
+                            color = if (isSelected) colors.textPrimary else colors.textSecondary,
+                            fontSize = 12.sp,
+                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -264,20 +271,13 @@ fun TutorScreen(
                 ) {
                     // Upload past paper photo: gallery or camera.
                     Box(modifier = Modifier.weight(1f)) {
-                        OutlinedButton(
+                        com.example.fio.ui.components.FioSecondaryButton(
+                            text = "Photo",
+                            icon = Icons.Default.AddPhotoAlternate,
+                            compact = true,
                             onClick = { showPhotoMenu = true },
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = colors.textSecondary,
-                                containerColor = colors.surfaceElevated
-                            ),
-                            border = null,
-                            shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.fillMaxWidth().testTag("upload_past_question_photo")
-                        ) {
-                            Icon(imageVector = Icons.Default.AddPhotoAlternate, contentDescription = null, tint = colors.textSecondary, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Photo", color = colors.textSecondary, fontSize = 11.sp)
-                        }
+                        )
                         DropdownMenu(
                             expanded = showPhotoMenu,
                             onDismissRequest = { showPhotoMenu = false },
@@ -303,7 +303,11 @@ fun TutorScreen(
                     }
 
                     // Socratic hint: nudge without revealing the answer (same image/math capability as Wingman)
-                    OutlinedButton(
+                    com.example.fio.ui.components.FioSecondaryButton(
+                        text = if (isHintLoading) "Thinking…" else "Hint",
+                        icon = Icons.Default.Lightbulb,
+                        compact = true,
+                        enabled = !isHintLoading,
                         onClick = {
                             if (!isHintLoading) {
                                 isHintLoading = true
@@ -345,24 +349,13 @@ fun TutorScreen(
                                 }
                             }
                         },
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = colors.primary,
-                            containerColor = colors.surfaceElevated
-                        ),
-                        border = null,
-                        shape = RoundedCornerShape(10.dp),
                         modifier = Modifier.weight(1f).testTag("get_hint_button")
-                    ) {
-                        if (isHintLoading) {
-                            CircularProgressIndicator(modifier = Modifier.size(14.dp), color = colors.primary, strokeWidth = 2.dp)
-                        } else {
-                            Icon(imageVector = Icons.Default.Lightbulb, contentDescription = null, tint = colors.primary, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Hint", color = colors.primary, fontSize = 11.sp)
-                        }
-                    }
+                    )
 
-                    Button(
+                    com.example.fio.ui.components.FioPrimaryButton(
+                        text = if (isGrading) "Grading…" else "Check answer",
+                        compact = true,
+                        enabled = !isGrading,
                         onClick = {
                             if ((studentAnswerInput.isNotBlank() || selectedPhotoUri != null) && !isGrading) {
                                 isGrading = true
@@ -432,16 +425,8 @@ Evaluate this answer. Return ONLY a valid JSON object without markdown fences, w
                                 }
                             }
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
-                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.weight(1.4f).testTag("submit_answer_button")
-                    ) {
-                        if (isGrading) {
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
-                            Spacer(modifier = Modifier.width(6.dp))
-                        }
-                        Text("Submit & Grade", color = Color.White, fontSize = 12.sp)
-                    }
+                    )
                 }
 
                 // Socratic hint card (teaches; never reveals the answer)
@@ -659,6 +644,18 @@ Evaluate this answer. Return ONLY a valid JSON object without markdown fences, w
     }
 
     // Confirmation: delete the practice sessions listed under the current subject.
+    courseEditTarget?.let { course ->
+        com.example.fio.ui.components.CourseDetailsDialog(
+            course = course,
+            onDismiss = { courseEditTarget = null },
+            onSave = { name, details ->
+                repository.updateCourseDetails(course.id, name, details)
+                courseEditTarget = null
+                Toast.makeText(context, "Subject updated", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
     if (historyPendingClear) {
         AlertDialog(
             onDismissRequest = { historyPendingClear = false },

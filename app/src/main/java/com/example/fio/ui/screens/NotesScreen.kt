@@ -68,6 +68,7 @@ fun NotesScreen(repository: FioRepository) {
     var newFolderNameInput by remember { mutableStateOf("") }
     // Long-press a folder chip → delete confirm
     var folderPendingDelete by remember { mutableStateOf<String?>(null) }
+    var notePendingDelete by remember { mutableStateOf<NoteItem?>(null) }
 
     // Active Note Editor state
     var editingNote by remember { mutableStateOf<NoteItem?>(null) }
@@ -637,7 +638,10 @@ fun NotesScreen(repository: FioRepository) {
                     padding = PaddingValues(12.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { editingNote = noteItem }
+                        .combinedClickable(
+                            onClick = { editingNote = noteItem },
+                            onLongClick = { notePendingDelete = noteItem }
+                        )
                         .testTag("note_item_${noteItem.id}")
                 ) {
                     Row(
@@ -741,6 +745,36 @@ fun NotesScreen(repository: FioRepository) {
             },
             dismissButton = {
                 TextButton(onClick = { folderPendingDelete = null }) {
+                    Text("Cancel", color = colors.textMuted)
+                }
+            }
+        )
+    }
+
+    // Long-press a note: confirm delete before anything disappears.
+    notePendingDelete?.let { note ->
+        AlertDialog(
+            onDismissRequest = { notePendingDelete = null },
+            containerColor = colors.surface,
+            title = { Text("Delete this note?", style = com.example.fio.ui.theme.FioType.section, color = colors.textPrimary) },
+            text = {
+                Text(
+                    "\u201c${note.title.ifBlank { "Untitled note" }}\u201d will be permanently deleted.",
+                    style = com.example.fio.ui.theme.FioType.small,
+                    color = colors.textSecondary
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    repository.deleteNote(note.id)
+                    if (editingNote?.id == note.id) editingNote = null
+                    notePendingDelete = null
+                }) {
+                    Text("Delete", color = colors.error, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { notePendingDelete = null }) {
                     Text("Cancel", color = colors.textMuted)
                 }
             }

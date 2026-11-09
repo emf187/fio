@@ -70,8 +70,9 @@ fun CalendarScreen(repository: FioRepository) {
     var eventTitle by remember { mutableStateOf("") }
     var eventDescription by remember { mutableStateOf("") }
     var eventType by remember { mutableStateOf(EventType.STUDY) }
-    var eventStartHour by remember { mutableStateOf("14") }
+    var eventStartHour by remember { mutableStateOf("2") }
     var eventStartMinute by remember { mutableStateOf("00") }
+    var eventStartAmPm by remember { mutableStateOf("PM") }
     var eventDurationMinutes by remember { mutableStateOf("60") }
 
     // .ics input
@@ -104,8 +105,10 @@ fun CalendarScreen(repository: FioRepository) {
             eventDescription = event.description
             eventType = event.type
             val cal = Calendar.getInstance().apply { timeInMillis = event.startTimeMillis }
-            eventStartHour = cal.get(Calendar.HOUR_OF_DAY).toString()
+            val hour24 = cal.get(Calendar.HOUR_OF_DAY)
+            eventStartHour = (if (hour24 % 12 == 0) 12 else hour24 % 12).toString()
             eventStartMinute = String.format(Locale.getDefault(), "%02d", cal.get(Calendar.MINUTE))
+            eventStartAmPm = if (hour24 < 12) "AM" else "PM"
             val duration = (event.endTimeMillis - event.startTimeMillis) / (60 * 1000L)
             eventDurationMinutes = duration.toString()
         } else {
@@ -113,8 +116,9 @@ fun CalendarScreen(repository: FioRepository) {
             eventTitle = ""
             eventDescription = ""
             eventType = EventType.STUDY
-            eventStartHour = "14"
+            eventStartHour = "2"
             eventStartMinute = "00"
+            eventStartAmPm = "PM"
             eventDurationMinutes = "60"
         }
         showAddEventDialog = true
@@ -191,7 +195,7 @@ fun CalendarScreen(repository: FioRepository) {
                         OutlinedTextField(
                             value = eventStartHour,
                             onValueChange = { eventStartHour = it },
-                            label = { Text("Hour (0-23)", color = colors.textMuted) },
+                            label = { Text("Hour (1-12)", color = colors.textMuted) },
                             singleLine = true,
                             modifier = Modifier.weight(1f),
                             colors = OutlinedTextFieldDefaults.colors(
@@ -229,6 +233,25 @@ fun CalendarScreen(repository: FioRepository) {
                         )
                     }
 
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        com.example.fio.ui.components.FioPill(
+                            text = "AM",
+                            selected = eventStartAmPm == "AM",
+                            onClick = { eventStartAmPm = "AM" }
+                        )
+                        com.example.fio.ui.components.FioPill(
+                            text = "PM",
+                            selected = eventStartAmPm == "PM",
+                            onClick = { eventStartAmPm = "PM" }
+                        )
+                        Spacer(modifier = Modifier.weight(1f))
+                        Text(
+                            text = "$eventStartHour:${eventStartMinute.padStart(2, '0')} $eventStartAmPm",
+                            style = com.example.fio.ui.theme.FioType.label,
+                            color = colors.textSecondary
+                        )
+                    }
+
                     if (editingEvent != null) {
                         Text(
                             text = "Created: ${formatTimestamp(editingEvent!!.loggedAtMillis)}" +
@@ -257,7 +280,13 @@ fun CalendarScreen(repository: FioRepository) {
                             if (eventTitle.isNotBlank()) {
                                 val cal = Calendar.getInstance().apply {
                                     timeInMillis = selectedDayTimestamp
-                                    set(Calendar.HOUR_OF_DAY, eventStartHour.toIntOrNull()?.coerceIn(0, 23) ?: 14)
+                                    val hour12 = (eventStartHour.toIntOrNull() ?: 2).coerceIn(1, 12)
+                                    val hour24 = when {
+                                        eventStartAmPm == "AM" && hour12 == 12 -> 0
+                                        eventStartAmPm == "PM" && hour12 != 12 -> hour12 + 12
+                                        else -> hour12
+                                    }
+                                    set(Calendar.HOUR_OF_DAY, hour24)
                                     set(Calendar.MINUTE, eventStartMinute.toIntOrNull()?.coerceIn(0, 59) ?: 0)
                                     set(Calendar.SECOND, 0)
                                 }

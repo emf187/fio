@@ -6,6 +6,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -52,8 +53,14 @@ import java.util.Calendar
 
 private val DAY_LABELS = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 
-fun formatTimetableMinutes(minutes: Int): String =
-    "%02d:%02d".format((minutes.coerceIn(0, 24 * 60 - 1)) / 60, minutes % 60)
+fun formatTimetableMinutes(minutes: Int): String {
+    val clamped = minutes.coerceIn(0, 24 * 60 - 1)
+    val hour24 = clamped / 60
+    val minute = clamped % 60
+    val suffix = if (hour24 < 12) "AM" else "PM"
+    val hour12 = if (hour24 % 12 == 0) 12 else hour24 % 12
+    return "%d:%02d %s".format(hour12, minute, suffix)
+}
 
 fun todayMonSunIndex(): Int {
     val dow = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
@@ -73,6 +80,7 @@ fun todayMonSunIndex(): Int {
  * title, room, day, both times; switch the alarm per row so the phone actually
  * rings at each period's start (weekly repeat, survives reboot).
  */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun TimetableScreen(repository: FioRepository) {
     val colors = LocalFioColors.current
@@ -159,14 +167,19 @@ fun TimetableScreen(repository: FioRepository) {
             dayPeriods.forEach { period ->
                 FioCard(
                     backgroundColor = if (period.alarmEnabled) colors.surface else colors.surfaceElevated,
-                    padding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+                    padding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                    modifier = Modifier.combinedClickable(
+                        onClick = { editorPeriod = period; editorOpen = true },
+                        onLongClick = { editorPeriod = period; editorOpen = true }
+                    )
                 ) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(modifier = Modifier.width(78.dp)) {
+                        Column(modifier = Modifier.width(84.dp)) {
                             Text(
                                 text = formatTimetableMinutes(period.startMinutes),
                                 color = colors.textPrimary,
-                                fontSize = 15.sp,
+                                fontSize = 14.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
                             Text(
@@ -175,15 +188,17 @@ fun TimetableScreen(repository: FioRepository) {
                                 fontSize = 11.sp
                             )
                         }
-                        Column(modifier = Modifier.weight(1f).clickable { editorPeriod = period; editorOpen = true }) {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = period.title,
                                 color = colors.textPrimary,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                             )
                             if (period.room.isNotBlank()) {
-                                Text(text = period.room, color = colors.textMuted, fontSize = 11.sp)
+                                Text(text = period.room, color = colors.textMuted, fontSize = 11.sp, maxLines = 1)
                             }
                         }
                         IconButton(onClick = {
@@ -215,6 +230,17 @@ fun TimetableScreen(repository: FioRepository) {
                                 tint = colors.textMuted
                             )
                         }
+                    }
+                    if (period.details.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = period.details,
+                            color = colors.textSecondary,
+                            fontSize = 11.sp,
+                            maxLines = 2,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
+                    }
                     }
                 }
             }
@@ -289,6 +315,7 @@ private fun PeriodEditorDialog(
     var day by remember { mutableStateOf(initial?.dayOfWeek ?: defaultDay) }
     var startMinutes by remember { mutableStateOf(initial?.startMinutes ?: 540) }
     var endMinutes by remember { mutableStateOf(initial?.endMinutes ?: 585) }
+    var details by remember { mutableStateOf(initial?.details ?: "") }
     var alarmOn by remember { mutableStateOf(initial?.alarmEnabled ?: true) }
 
     var pickingStart by remember { mutableStateOf(false) }
@@ -333,6 +360,20 @@ private fun PeriodEditorDialog(
                     label = { Text("Room / note (optional)", color = colors.textMuted) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().testTag("tt_room"),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = colors.primary,
+                        unfocusedBorderColor = colors.border,
+                        focusedTextColor = colors.textPrimary,
+                        unfocusedTextColor = colors.textPrimary
+                    )
+                )
+                OutlinedTextField(
+                    value = details,
+                    onValueChange = { details = it },
+                    label = { Text("Details (lecturer, what to bring…)", color = colors.textMuted) },
+                    minLines = 2,
+                    maxLines = 4,
+                    modifier = Modifier.fillMaxWidth().testTag("tt_details"),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = colors.primary,
                         unfocusedBorderColor = colors.border,
@@ -433,6 +474,7 @@ private fun PeriodEditorDialog(
                                     (initial ?: TimetablePeriod(title = "")).copy(
                                         title = title.trim(),
                                         room = room.trim(),
+                                        details = details.trim(),
                                         dayOfWeek = day,
                                         startMinutes = startMinutes,
                                         endMinutes = endMinutes,
@@ -453,7 +495,7 @@ private fun PeriodEditorDialog(
         val state = rememberTimePickerState(
             initialHour = (if (pickingStart) startMinutes else endMinutes) / 60,
             initialMinute = (if (pickingStart) startMinutes else endMinutes) % 60,
-            is24Hour = true
+            is24Hour = false
         )
         Dialog(
             onDismissRequest = { pickingStart = false; pickingEnd = false },

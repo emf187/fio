@@ -114,6 +114,9 @@ fun StudyCompanionScreen(
     // Subject pending removal (Study / Leisure / Research tabs)
     var coursePendingRemoval by remember { mutableStateOf<CourseSection?>(null) }
 
+    // Subject being edited via long-press (title + details)
+    var courseEditTarget by remember { mutableStateOf<CourseSection?>(null) }
+
     // Document Picker State
     var targetCourseIdForImport by remember { mutableStateOf("") }
     var isImportingDocs by remember { mutableStateOf(false) }
@@ -339,6 +342,23 @@ fun StudyCompanionScreen(
                 TextButton(onClick = { docPendingRemoval = null }) {
                     Text("Cancel", color = colors.textMuted)
                 }
+            }
+        )
+    }
+
+    // Long-press a subject: edit its title and details (delete lives inside).
+    courseEditTarget?.let { course ->
+        com.example.fio.ui.components.CourseDetailsDialog(
+            course = course,
+            onDismiss = { courseEditTarget = null },
+            onSave = { name, details ->
+                repository.updateCourseDetails(course.id, name, details)
+                courseEditTarget = null
+                Toast.makeText(context, "Subject updated", Toast.LENGTH_SHORT).show()
+            },
+            onDelete = {
+                courseEditTarget = null
+                coursePendingRemoval = course
             }
         )
     }
@@ -665,27 +685,26 @@ fun StudyCompanionScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(colors.surface)
-                    .border(1.dp, colors.border, RoundedCornerShape(14.dp))
-                    .padding(4.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(colors.surfaceElevated)
+                    .padding(3.dp),
+                horizontalArrangement = Arrangement.spacedBy(3.dp)
             ) {
                 SectionType.values().forEach { sec ->
                     val isSelected = selectedSection == sec
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(if (isSelected) colors.primaryContainer else Color.Transparent)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(if (isSelected) colors.textPrimary else Color.Transparent)
                             .clickable { selectedSection = sec }
-                            .padding(vertical = 8.dp),
+                            .padding(vertical = 9.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = sec.name,
-                            color = if (isSelected) colors.primary else colors.textSecondary,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            text = sec.name.lowercase().replaceFirstChar { it.uppercase() },
+                            color = if (isSelected) colors.background else colors.textMuted,
+                            fontWeight = FontWeight.SemiBold,
                             fontSize = 12.sp
                         )
                     }
@@ -702,22 +721,17 @@ fun StudyCompanionScreen(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "${selectedSection.name} Subjects (${sectionCourses.size})",
-                    color = colors.textPrimary,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold
+                    text = "Subjects",
+                    style = com.example.fio.ui.theme.FioType.section,
+                    color = colors.textPrimary
                 )
-                Button(
+                com.example.fio.ui.components.FioSecondaryButton(
+                    text = "New",
+                    icon = Icons.Default.Add,
+                    compact = true,
                     onClick = { showAddCourseDialog = true },
-                    modifier = Modifier.testTag("add_course_button"),
-                    colors = ButtonDefaults.buttonColors(containerColor = colors.primaryContainer),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Icon(imageVector = Icons.Default.Add, contentDescription = "Add Course", tint = colors.primary, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("New Subject", color = colors.primary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                }
+                    modifier = Modifier.testTag("add_course_button")
+                )
             }
 
             if (sectionCourses.isEmpty()) {
@@ -747,21 +761,24 @@ fun StudyCompanionScreen(
                         val isSelected = c.id == selectedCourseId
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(if (isSelected) colors.primaryContainer else colors.surface)
-                                .border(1.dp, if (isSelected) colors.primary else colors.border, RoundedCornerShape(12.dp))
+                                .widthIn(max = 190.dp)
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(if (isSelected) colors.surfaceElevated else colors.surface)
                                 .combinedClickable(
                                     onClick = { selectedCourseId = c.id },
-                                    onLongClick = { coursePendingRemoval = c }
+                                    onLongClick = { courseEditTarget = c }
                                 )
-                                .padding(start = 12.dp, end = if (isSelected) 6.dp else 12.dp, top = 8.dp, bottom = 8.dp)
+                                .padding(start = 14.dp, end = if (isSelected) 8.dp else 14.dp, top = 9.dp, bottom = 9.dp)
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
                                     text = c.name,
-                                    color = if (isSelected) colors.primary else colors.textSecondary,
+                                    color = if (isSelected) colors.textPrimary else colors.textSecondary,
                                     fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false)
                                 )
                                 if (isSelected) {
                                     Spacer(modifier = Modifier.width(6.dp))

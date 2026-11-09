@@ -12,12 +12,12 @@ import java.util.Locale
 fun currentTimestamp(): Long = System.currentTimeMillis()
 
 fun formatTimestamp(millis: Long): String {
-    val sdf = SimpleDateFormat("MMM d, yyyy HH:mm", Locale.getDefault())
+    val sdf = SimpleDateFormat("MMM d, yyyy h:mm a", Locale.getDefault())
     return sdf.format(Date(millis))
 }
 
 fun formatTimeOnly(millis: Long): String {
-    val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
+    val sdf = SimpleDateFormat("h:mm a", Locale.getDefault())
     return sdf.format(Date(millis))
 }
 
@@ -246,6 +246,8 @@ data class TimetablePeriod(
     val id: String = java.util.UUID.randomUUID().toString(),
     val title: String,
     val room: String = "",
+    /** Free-form details (lecturer, what to bring, syllabus note). */
+    val details: String = "",
     /** 1 = Monday … 7 = Sunday (Mon-first to keep the screen ordering simple). */
     val dayOfWeek: Int = 1,
     val startMinutes: Int = 540, // minutes from midnight, 07:45 = 465
@@ -258,8 +260,8 @@ data class AppSettings(
     val aiBaseUrl: String = "https://generativelanguage.googleapis.com/v1beta/openai",
     val aiApiKey: String = "",
     val aiModelName: String = "gemini-3.8-flash",
-    val theme: String = "OBSIDIAN_LIGHT", // OBSIDIAN_LIGHT (default), OBSIDIAN_PURPLE, OLED_BLACK, HIGH_CONTRAST
-    val accentColor: String = "BLUE", // BLUE (default), PURPLE, TEAL, GREEN, AMBER, ROSE, ORANGE
+    val theme: String = "OBSIDIAN_PURPLE", // Midnight (default), SLATE, PLUM, FOREST, OBSIDIAN_LIGHT/Paper, SAND, MIST, OLED_BLACK, HIGH_CONTRAST
+    val accentColor: String = "MINT", // Theme default (MINT), BLUE, GREEN, AMBER, ROSE, ORANGE
     val fontScale: Float = 1.0f,
     val reduceMotion: Boolean = false,
     /** Fetch 1–2 related web images for AI answers where the model finds them helpful. */
