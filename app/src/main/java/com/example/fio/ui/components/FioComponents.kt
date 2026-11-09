@@ -1,4 +1,4 @@
-ï»¿package com.example.fio.ui.components
+package com.example.fio.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -179,7 +179,7 @@ fun FioSidebarDrawer(
                 .fillMaxSize()
                 .padding(vertical = 20.dp, horizontal = 10.dp)
         ) {
-            // Header with user profile (no logo â€” clean)
+            // Header with user profile (no logo — clean)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
@@ -396,7 +396,7 @@ fun AiScheduleProposalDialog(
 // Fio design system primitives (v2)
 // ---------------------------------------------------------------------------
 
-/** Large quiet screen heading. No card, no border â€” type carries the hierarchy. */
+/** Large quiet screen heading. No card, no border — type carries the hierarchy. */
 @Composable
 fun FioScreenHeader(
     title: String,
@@ -455,7 +455,7 @@ fun FioSectionHeader(
 
 /**
  * The one primary action in a view. In the dark theme it is a white pill with
- * ink text â€” the reference's unmistakable action treatment, and always legible.
+ * ink text — the reference's unmistakable action treatment, and always legible.
  */
 @Composable
 fun FioPrimaryButton(
@@ -476,7 +476,7 @@ fun FioPrimaryButton(
             .clickable(enabled = enabled, onClick = onClick)
             .heightIn(min = if (compact) 36.dp else 44.dp)
             .padding(
-                horizontal = if (compact) 12.dp else 20.dp,
+                horizontal = if (compact) 10.dp else 20.dp,
                 vertical = if (compact) 8.dp else 11.dp
             ),
         horizontalArrangement = Arrangement.Center,
@@ -522,7 +522,7 @@ fun FioSecondaryButton(
             .clickable(enabled = enabled, onClick = onClick)
             .heightIn(min = if (compact) 36.dp else 44.dp)
             .padding(
-                horizontal = if (compact) 12.dp else 18.dp,
+                horizontal = if (compact) 10.dp else 18.dp,
                 vertical = if (compact) 8.dp else 10.dp
             ),
         horizontalArrangement = Arrangement.Center,

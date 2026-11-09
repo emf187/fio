@@ -233,7 +233,7 @@ fun DashboardScreen(
             ) {
                 com.example.fio.ui.components.FioSecondaryButton(
                     text = "I ate",
-                    icon = Icons.Default.Restaurant,
+                    compact = true,
                     onClick = { repository.logMeal("Quick meal") },
                     modifier = Modifier
                         .weight(1f)
@@ -242,7 +242,7 @@ fun DashboardScreen(
 
                 com.example.fio.ui.components.FioSecondaryButton(
                     text = if (isSleeping) "Awake" else "Sleep",
-                    icon = if (isSleeping) Icons.Default.WbSunny else Icons.Default.Bedtime,
+                    compact = true,
                     onClick = {
                         if (isSleeping) {
                             repository.quickSleepAwake()
@@ -259,7 +259,7 @@ fun DashboardScreen(
 
                 com.example.fio.ui.components.FioPrimaryButton(
                     text = "Focus",
-                    icon = Icons.Default.Timer,
+                    compact = true,
                     onClick = { onNavigate(FioScreen.TIMER) },
                     modifier = Modifier
                         .weight(1f)
