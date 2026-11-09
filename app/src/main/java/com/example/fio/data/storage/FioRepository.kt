@@ -1069,6 +1069,24 @@ class FioRepository(private val context: Context) {
         settingsObj.put("showAiImages", s.showAiImages)
         root.put("settings", settingsObj)
 
+        // 14. Gallery photos (metadata; the files travel in device-to-device bundles)
+        val galleryArray = JSONArray()
+        for (g in _galleryImages.value) {
+            galleryArray.put(
+                JSONObject()
+                    .put("id", g.id)
+                    .put("fileName", g.fileName)
+                    .put("displayName", g.displayName)
+                    .put("mimeType", g.mimeType)
+                    .put("addedAtMillis", g.addedAtMillis)
+            )
+        }
+        root.put("gallery", galleryArray)
+
+        // 15. In-flight sleep session, so a clone continues an ongoing sleep tracking.
+        val pendingSleep = prefs.getLong("sleep_start_timestamp", 0L)
+        if (pendingSleep > 0L) root.put("pendingSleepStart", pendingSleep)
+
         return if (pretty) root.toString(2) else root.toString()
     }
 
@@ -1084,7 +1102,50 @@ class FioRepository(private val context: Context) {
         return success
     }
 
-    private fun parseState(jsonString: String): Boolean {
+    /**
+     * Device-to-Device Sync: merges an incoming profile with the local one instead
+     * of replacing it. Every record resolves individually — the fresher copy of
+     * each item (newest log/edit/access timestamp) wins, and add-only details
+     * (highlighted dates, tags, note images) are unioned so nothing is lost from
+     * either device. Brand-new records from the other device simply arrive.
+     */
+    fun mergeFromJson(jsonString: String): Boolean {
+        val success = parseState(jsonString, merge = true)
+        if (success) {
+            _documents.value.forEach { doc ->
+                if (doc.content.isNotBlank()) writeContentFile(doc.id, doc.content)
+            }
+            saveAll()
+        }
+        return success
+    }
+
+    /** Keeps the copy with the larger timestamp. */
+    private fun <T> newestWins(timestamp: (T) -> Long): (T, T) -> T = { a, b ->
+        if (timestamp(b) > timestamp(a)) b else a
+    }
+
+    /** Idempotent id-keyed union: existing records stay, arriving ones may win. */
+    private fun <T, K> mergeRecords(
+        current: List<T>,
+        incoming: List<T>,
+        key: (T) -> K,
+        winner: (T, T) -> T
+    ): List<T> = when {
+        incoming.isEmpty() -> current
+        current.isEmpty() -> incoming
+        else -> {
+            val out = LinkedHashMap<K, T>((current.size + incoming.size) * 2)
+            current.forEach { out[key(it)] = it }
+            incoming.forEach { inc ->
+                val k = key(inc)
+                out[k] = out[k]?.let { winner(it, inc) } ?: inc
+            }
+            out.values.toList()
+        }
+    }
+
+    private fun parseState(jsonString: String, merge: Boolean = false): Boolean {
         return try {
             val root = JSONObject(jsonString)
 
@@ -1118,7 +1179,9 @@ class FioRepository(private val context: Context) {
                         )
                     )
                 }
-                _events.value = list
+                _events.value =
+                    if (merge) mergeRecords(_events.value, list, { it.id }, newestWins { it.loggedAtMillis })
+                    else list
             }
 
             // Editable class timetable
@@ -1139,9 +1202,17 @@ class FioRepository(private val context: Context) {
                         )
                     )
                 }
-                _timetable.value = tList.sortedBy { (it.dayOfWeek * 24 * 60) + it.startMinutes }
+                val mergedTimetable =
+                    if (merge) mergeRecords(
+                        _timetable.value,
+                        tList,
+                        { p -> p.id },
+                        { _, inc -> inc }
+                    ).sortedBy { (it.dayOfWeek * 24 * 60) + it.startMinutes }
+                    else tList.sortedBy { (it.dayOfWeek * 24 * 60) + it.startMinutes }
+                _timetable.value = mergedTimetable
                 val tArr = JSONArray()
-                for (p in tList) {
+                for (p in mergedTimetable) {
                     tArr.put(
                         JSONObject()
                             .put("id", p.id).put("title", p.title).put("room", p.room)
@@ -1180,7 +1251,13 @@ class FioRepository(private val context: Context) {
                         )
                     )
                 }
-                _habits.value = list
+                _habits.value =
+                    if (merge) mergeRecords(_habits.value, list, { it.id }, { cur, inc ->
+                        // Fresher record wins, completed check-dates are unioned.
+                        val base = if (inc.loggedAtMillis > cur.loggedAtMillis) inc else cur
+                        base.copy(completedDates = (cur.completedDates + inc.completedDates).distinct())
+                    })
+                    else list
             }
 
             // Goals
@@ -1203,7 +1280,9 @@ class FioRepository(private val context: Context) {
                         )
                     )
                 }
-                _goals.value = list
+                _goals.value =
+                    if (merge) mergeRecords(_goals.value, list, { it.id }, newestWins { it.loggedAtMillis })
+                    else list
             }
 
             // Courses
@@ -1222,7 +1301,9 @@ class FioRepository(private val context: Context) {
                         )
                     )
                 }
-                _courses.value = list
+                _courses.value =
+                    if (merge) mergeRecords(_courses.value, list, { it.id }, { _, inc -> inc })
+                    else list
             }
 
             // Books & Documents Data (with chunks, highlights, reading progress)
@@ -1279,7 +1360,19 @@ class FioRepository(private val context: Context) {
                         )
                     )
                 }
-                _documents.value = list
+                _documents.value =
+                    if (merge) mergeRecords(_documents.value, list, { it.id }, { cur, inc ->
+                        val fresher = if (inc.lastAccessedMillis > cur.lastAccessedMillis) inc else cur
+                        val richer = if (inc.content.length > fresher.content.length) inc.content else fresher.content
+                        val mergedDoc = fresher.copy(
+                            content = richer,
+                            highlights = (cur.highlights + inc.highlights).distinct()
+                        )
+                        // Keep AI chunks consistent with the winning body.
+                        if (mergedDoc.content.isBlank()) mergedDoc
+                        else mergedDoc.copy(chunks = deriveDocumentChunks(mergedDoc.title, mergedDoc.content))
+                    })
+                    else list
             }
 
             // Notes
@@ -1312,7 +1405,15 @@ class FioRepository(private val context: Context) {
                         )
                     )
                 }
-                _notes.value = list
+                _notes.value =
+                    if (merge) mergeRecords(_notes.value, list, { it.id }, { cur, inc ->
+                        val base = if (inc.updatedAtMillis > cur.updatedAtMillis) inc else cur
+                        base.copy(
+                            imageUris = (cur.imageUris + inc.imageUris).distinct(),
+                            tags = (cur.tags + inc.tags).distinct()
+                        )
+                    })
+                    else list
             }
 
             // Note category folders
@@ -1325,7 +1426,9 @@ class FioRepository(private val context: Context) {
                         if (name.isNotBlank()) folders.add(name)
                     }
                 }
-                _noteFolders.value = folders
+                _noteFolders.value =
+                    if (merge) (_noteFolders.value + folders).distinct()
+                    else folders
                 saveNoteFolders()
             }
 
@@ -1347,7 +1450,9 @@ class FioRepository(private val context: Context) {
                         )
                     )
                 }
-                _sleepLogs.value = list
+                _sleepLogs.value =
+                    if (merge) mergeRecords(_sleepLogs.value, list, { it.id }, newestWins { it.loggedAtMillis })
+                    else list
             }
 
             // Meals
@@ -1366,7 +1471,9 @@ class FioRepository(private val context: Context) {
                         )
                     )
                 }
-                _mealLogs.value = list
+                _mealLogs.value =
+                    if (merge) mergeRecords(_mealLogs.value, list, { it.id }, newestWins { it.loggedAtMillis })
+                    else list
             }
 
             // Flashcards
@@ -1387,7 +1494,9 @@ class FioRepository(private val context: Context) {
                         )
                     )
                 }
-                _flashcards.value = list
+                _flashcards.value =
+                    if (merge) mergeRecords(_flashcards.value, list, { it.id }, newestWins { it.lastReviewedMillis ?: 0L })
+                    else list
             }
 
             // Tutor Sessions
@@ -1416,7 +1525,9 @@ class FioRepository(private val context: Context) {
                         )
                     )
                 }
-                _tutorSessions.value = list
+                _tutorSessions.value =
+                    if (merge) mergeRecords(_tutorSessions.value, list, { it.id }, newestWins { it.loggedAtMillis })
+                    else list
             }
 
             // Session Logs (Focus & Strikes)
@@ -1440,7 +1551,9 @@ class FioRepository(private val context: Context) {
                         )
                     )
                 }
-                _sessionLogs.value = list
+                _sessionLogs.value =
+                    if (merge) mergeRecords(_sessionLogs.value, list, { it.id }, newestWins { it.loggedAtMillis })
+                    else list
             }
 
             // Chat history
@@ -1468,7 +1581,36 @@ class FioRepository(private val context: Context) {
                         )
                     )
                 }
-                _chatHistory.value = list
+                _chatHistory.value =
+                    if (merge) mergeRecords(_chatHistory.value, list, { it.id }, { keep, _ -> keep })
+                    else list
+            }
+
+            // Gallery photos metadata (bundle/file imports bring the binaries too)
+            if (root.has("gallery")) {
+                val gArr = root.getJSONArray("gallery")
+                val gList = mutableListOf<GalleryImage>()
+                for (gIdx in 0 until gArr.length()) {
+                    val obj = gArr.getJSONObject(gIdx)
+                    gList.add(
+                        GalleryImage(
+                            id = obj.optString("id", UUID.randomUUID().toString()),
+                            fileName = obj.getString("fileName"),
+                            displayName = obj.optString("displayName", ""),
+                            mimeType = obj.optString("mimeType", "image/*"),
+                            addedAtMillis = obj.optLong("addedAtMillis", currentTimestamp())
+                        )
+                    )
+                }
+                _galleryImages.value =
+                    if (merge) mergeRecords(_galleryImages.value, gList, { it.id }, { keep, _ -> keep })
+                    else gList
+                saveGalleryImages()
+            }
+
+            // In-flight sleep session (a clone keeps any running sleep timer)
+            if (root.has("pendingSleepStart") && root.optLong("pendingSleepStart", 0L) > 0L) {
+                prefs.edit().putLong("sleep_start_timestamp", root.getLong("pendingSleepStart")).apply()
             }
 
             // Settings

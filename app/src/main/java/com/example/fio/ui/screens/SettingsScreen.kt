@@ -30,10 +30,17 @@ import androidx.compose.ui.unit.sp
 import com.example.BuildConfig
 import com.example.fio.data.model.AppSettings
 import com.example.fio.data.storage.FioRepository
+import com.example.fio.data.transfer.FIO_TRANSFER_PORT
+import com.example.fio.data.transfer.FioTransferClient
+import com.example.fio.data.transfer.FioWifi
+import com.example.fio.data.transfer.TransferServer
 import com.example.fio.ui.components.FioCard
 import com.example.fio.ui.components.FioDivider
 import com.example.fio.ui.theme.LocalFioColors
 import com.example.fio.ui.theme.accentSwatch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun SettingsScreen(repository: FioRepository) {
@@ -61,6 +68,11 @@ fun SettingsScreen(repository: FioRepository) {
     var importExportDialogState by remember { mutableStateOf<String?>(null) } // "EXPORT" or "IMPORT"
     var backupJsonInput by remember { mutableStateOf("") }
 
+    // Device-to-Device transfer (complete clone over Wi-Fi). null = closed,
+    // true = open in Sync (merge) mode, false = open in Clone (replace) mode.
+    var transferSendOpen by remember { mutableStateOf(false) }
+    var transferReceiveMerge by remember { mutableStateOf<Boolean?>(null) }
+
     // Export / Import Dialog
     importExportDialogState?.let { mode ->
         AlertDialog(
@@ -68,7 +80,7 @@ fun SettingsScreen(repository: FioRepository) {
             containerColor = colors.surface,
             title = {
                 Text(
-                    text = if (mode == "EXPORT") "Export Data Over Wi-Fi / File" else "Import Data Backup",
+                    text = if (mode == "EXPORT") "Export Data (as File / Message)" else "Import Data Backup",
                     color = colors.textPrimary,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold
@@ -78,7 +90,7 @@ fun SettingsScreen(repository: FioRepository) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
                         text = if (mode == "EXPORT")
-                            "All books, documents data, reading progress, chat sessions, schedules, habits, goals, notes, sleep, and meals are serialized below. Copy and transfer to another device:"
+                            "Console backup of all data as text — convenient for a quick share. For a COMPLETE one-tap clone (with the actual PDF/book/image files) use Device to Device Transfer below."
                         else "Paste the JSON backup string to restore all records, books, documents, and progress:",
                         color = colors.textSecondary,
                         fontSize = 12.sp
@@ -162,6 +174,18 @@ fun SettingsScreen(repository: FioRepository) {
                     Text("Close", color = colors.textSecondary)
                 }
             }
+        )
+    }
+
+    // Complete profile clone over Wi-Fi
+    if (transferSendOpen) {
+        SendTransferDialog(repository = repository, onDismiss = { transferSendOpen = false })
+    }
+    transferReceiveMerge?.let { merge ->
+        ReceiveTransferDialog(
+            repository = repository,
+            defaultMerge = merge,
+            onDismiss = { transferReceiveMerge = null }
         )
     }
 
@@ -689,6 +713,80 @@ fun SettingsScreen(repository: FioRepository) {
                         Text("Import Backup", color = colors.textPrimary, fontSize = 12.sp)
                     }
                 }
+            }
+        }
+
+        // --- 5b. Device to Device Transfer (complete profile clone over Wi-Fi) ---
+        item {
+            FioCard(
+                backgroundColor = colors.surface,
+                borderColor = colors.border,
+                padding = PaddingValues(16.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(imageVector = Icons.Default.Devices, contentDescription = null, tint = colors.primary, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Device to Device Transfer", color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    "Clone or SYNC your ENTIRE profile to another device over the same Wi-Fi network — courses, books & PDFs, notes with images, chats, gallery photos, flashcards, tutor sessions, stats, calendar, timetable + alarms, settings and your AI key. Nothing is left out.",
+                    color = colors.textMuted,
+                    fontSize = 11.sp
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = { transferSendOpen = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f).testTag("transfer_send_button")
+                    ) {
+                        Icon(imageVector = Icons.Default.IosShare, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Clone (Send)", color = Color.White, fontSize = 11.sp)
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = { transferReceiveMerge = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = colors.success),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f).testTag("transfer_sync_button")
+                    ) {
+                        Icon(imageVector = Icons.Default.Sync, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Sync Progress", color = Color.White, fontSize = 11.sp)
+                    }
+
+                    OutlinedButton(
+                        onClick = { transferReceiveMerge = false },
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = colors.textPrimary,
+                            containerColor = colors.surfaceElevated
+                        ),
+                        border = null,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(imageVector = Icons.Default.DeviceHub, contentDescription = null, tint = colors.textPrimary, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Receive", color = colors.textPrimary, fontSize = 11.sp)
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    "Tip: use Sync after you've been studying on either device — records merge with the newest copy of each item winning, so the device you used most keeps its progress.",
+                    color = colors.textMuted,
+                    fontSize = 10.sp
+                )
             }
         }
 
