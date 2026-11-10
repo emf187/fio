@@ -359,6 +359,7 @@ class FioRepository(private val context: Context) {
                     .put("id", p.id)
                     .put("title", p.title)
                     .put("room", p.room)
+                    .put("details", p.details)
                     .put("dayOfWeek", p.dayOfWeek)
                     .put("startMinutes", p.startMinutes)
                     .put("endMinutes", p.endMinutes)
@@ -384,6 +385,7 @@ class FioRepository(private val context: Context) {
                         id = o.optString("id", UUID.randomUUID().toString()),
                         title = o.optString("title", "Period"),
                         room = o.optString("room", ""),
+                        details = o.optString("details", ""),
                         dayOfWeek = o.optInt("dayOfWeek", 1).coerceIn(1, 7),
                         startMinutes = o.optInt("startMinutes", 540),
                         endMinutes = o.optInt("endMinutes", 585),
