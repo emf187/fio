@@ -617,6 +617,33 @@ class FioRepository(private val context: Context) {
     internal fun todayDateString(): String =
         java.time.LocalDate.now().toString()
 
+    /**
+     * Edit any past day's progress (mhabit-style record fixing from the
+     * heatmap). count 0 clears the day; reaching the goal marks it complete
+     * and streaks are recomputed from the full history.
+     */
+    fun setHabitDay(id: String, date: String, count: Int) {
+        _habits.value = _habits.value.map { h ->
+            if (h.id != id) h
+            else {
+                val goal = h.dailyGoal.coerceAtLeast(1)
+                val safeCount = count.coerceAtLeast(0)
+                val newProgress = if (safeCount <= 0) h.progressDates - date else h.progressDates + (date to safeCount)
+                val newCompleted =
+                    if (safeCount >= goal) (h.completedDates + date).distinct()
+                    else h.completedDates - date
+                val (streak, best) = recomputeStreaks(newCompleted, h.bestStreak)
+                h.copy(
+                    progressDates = newProgress,
+                    completedDates = newCompleted,
+                    streak = streak,
+                    bestStreak = best
+                )
+            }
+        }
+        saveAll()
+    }
+
     fun addHabit(item: HabitItem) {
         _habits.value = _habits.value + item
         saveAll()

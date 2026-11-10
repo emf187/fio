@@ -262,11 +262,16 @@ fun FioAppContent(
                         repository = repository
                     )
                     FioScreen.HEALTH -> HealthTrackingScreen(
+                        repository = repository,
+                        onOpenHabits = { currentScreen = FioScreen.HABITS }
+                    )
+                    FioScreen.HABITS -> HabitsScreen(
                         repository = repository
                     )
                     FioScreen.STATS -> StatsLifeScoreScreen(
                         repository = repository,
-                        aiClient = aiClient
+                        aiClient = aiClient,
+                        onOpenHabits = { currentScreen = FioScreen.HABITS }
                     )
                     FioScreen.SETTINGS -> SettingsScreen(
                         repository = repository

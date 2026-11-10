@@ -38,7 +38,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun StatsLifeScoreScreen(
     repository: FioRepository,
-    aiClient: FioAiClient
+    aiClient: FioAiClient,
+    onOpenHabits: () -> Unit
 ) {
     val colors = LocalFioColors.current
     val coroutineScope = rememberCoroutineScope()
@@ -265,6 +266,15 @@ fun StatsLifeScoreScreen(
                     CategoryScoreRow("Habits (Completions & Streaks)", lifeScore.habitsScore, 15, colors.success)
                     CategoryScoreRow("Activity & Rest (Workouts & Rest Blocks)", lifeScore.activityScore, 15, colors.primary)
                     CategoryScoreRow("Goals (Active Milestones)", lifeScore.goalsScore, 10, colors.textSecondary)
+
+                    TextButton(
+                        onClick = onOpenHabits,
+                        modifier = Modifier.fillMaxWidth().testTag("open_habits_button")
+                    ) {
+                        Icon(imageVector = Icons.Default.Repeat, contentDescription = null, tint = colors.primary, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Open Habits", color = colors.primary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
         }

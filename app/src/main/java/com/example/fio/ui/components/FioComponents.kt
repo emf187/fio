@@ -98,6 +98,7 @@ enum class FioScreen(val title: String, val icon: ImageVector) {
     NOTES("Notes", Icons.Default.EditNote),
     GALLERY("Gallery", Icons.Default.PhotoLibrary),
     HEALTH("Health", Icons.Default.Favorite),
+    HABITS("Habits", Icons.Default.Repeat),
     STATS("Progress", Icons.Default.Insights),
     SETTINGS("Settings", Icons.Default.Settings)
 }
@@ -286,6 +287,7 @@ fun FioSidebarDrawer(
                 SectionLabel("Health and progress")
 
                 NavItem(FioScreen.HEALTH, currentScreen, onSelectScreen, onClose)
+                NavItem(FioScreen.HABITS, currentScreen, onSelectScreen, onClose)
                 NavItem(FioScreen.STATS, currentScreen, onSelectScreen, onClose)
             }
 

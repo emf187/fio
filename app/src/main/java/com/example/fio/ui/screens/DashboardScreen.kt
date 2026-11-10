@@ -552,7 +552,7 @@ fun DashboardScreen(
                 com.example.fio.ui.components.FioSectionHeader(
                     title = "Habits",
                     actionLabel = "All",
-                    onAction = { onNavigate(FioScreen.HEALTH) }
+                    onAction = { onNavigate(FioScreen.HABITS) }
                 )
             }
             items(habits.filter { !it.archived }.take(4), key = { it.id }) { habit ->
