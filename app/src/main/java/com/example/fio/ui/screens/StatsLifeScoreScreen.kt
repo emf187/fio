@@ -1,5 +1,6 @@
 package com.example.fio.ui.screens
 
+import android.widget.Toast
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -7,8 +8,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -20,6 +23,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -32,6 +36,7 @@ import com.example.fio.ui.components.AiScheduleProposalDialog
 import com.example.fio.ui.components.FioBadge
 import com.example.fio.ui.components.FioCard
 import com.example.fio.ui.components.FioDivider
+import com.example.fio.ui.components.FioMarkdown
 import com.example.fio.ui.theme.LocalFioColors
 import kotlinx.coroutines.launch
 
@@ -42,6 +47,7 @@ fun StatsLifeScoreScreen(
     onOpenHabits: () -> Unit
 ) {
     val colors = LocalFioColors.current
+    val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
     val events by repository.events.collectAsState()
@@ -54,6 +60,16 @@ fun StatsLifeScoreScreen(
     val settings by repository.settings.collectAsState()
 
     var selectedPeriod by remember { mutableStateOf("Weekly") } // Daily, Weekly, Monthly
+
+    // Habit stats picker: up to 3 habits featured on this page, the rest stay in the habit tracker.
+    val activeHabits = habits.filter { !it.archived }
+    var pickedIds by remember { mutableStateOf(repository.habitStatsSelection()) }
+    var showHabitPicker by remember { mutableStateOf(false) }
+    val pickedHabits = if (pickedIds.isEmpty()) {
+        activeHabits.take(3)
+    } else {
+        pickedIds.mapNotNull { id -> activeHabits.find { it.id == id } }.take(3)
+    }
 
     val lifeScore = remember(events, habits, goals, sleepLogs, mealLogs, sessionLogs) {
         repository.calculateLifeScore()
@@ -81,6 +97,82 @@ fun StatsLifeScoreScreen(
                 proposedAdjustment = null
             },
             onDismiss = { proposedAdjustment = null }
+        )
+    }
+
+    // --- Habit stats picker: choose up to 3 habits to feature on this page ---
+    if (showHabitPicker) {
+        AlertDialog(
+            onDismissRequest = { showHabitPicker = false },
+            containerColor = colors.surface,
+            title = {
+                Text(
+                    "Pick habits to show (max 3)",
+                    color = colors.textPrimary,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    if (activeHabits.isEmpty()) {
+                        Text(
+                            "No active habits yet. Create one in the Habits tab first.",
+                            color = colors.textMuted,
+                            fontSize = 12.sp
+                        )
+                    } else {
+                        activeHabits.forEach { h ->
+                            val checked = pickedIds.contains(h.id)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        when {
+                                            checked -> pickedIds = pickedIds - h.id
+                                            pickedIds.size >= 3 -> Toast.makeText(
+                                                context,
+                                                "Pick up to 3 — the rest stay in the habit tracker",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                            else -> pickedIds = pickedIds + h.id
+                                        }
+                                    }
+                                    .padding(vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(checked = checked, onCheckedChange = null)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .size(10.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(h.colorValue()))
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(h.name, color = colors.textPrimary, fontSize = 13.sp, maxLines = 1)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        repository.setHabitStatsSelection(pickedIds)
+                        showHabitPicker = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Save", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showHabitPicker = false }) {
+                    Text("Cancel", color = colors.textSecondary)
+                }
+            }
         )
     }
 
@@ -264,8 +356,6 @@ fun StatsLifeScoreScreen(
                     CategoryScoreRow("Sleep (Hours vs 8h Target)", lifeScore.sleepScore, 20, colors.info)
                     CategoryScoreRow("Meals (Frequency & Regularity)", lifeScore.mealsScore, 15, colors.warning)
                     CategoryScoreRow("Habits (Completions & Streaks)", lifeScore.habitsScore, 15, colors.success)
-                    CategoryScoreRow("Activity & Rest (Workouts & Rest Blocks)", lifeScore.activityScore, 15, colors.primary)
-                    CategoryScoreRow("Goals (Active Milestones)", lifeScore.goalsScore, 10, colors.textSecondary)
 
                     TextButton(
                         onClick = onOpenHabits,
@@ -275,6 +365,77 @@ fun StatsLifeScoreScreen(
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("Open Habits", color = colors.primary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     }
+                }
+            }
+        }
+
+        // --- 4b. Habit stats (pick up to 3 from the habit tracker) ---
+        item {
+            FioCard(
+                backgroundColor = colors.surface,
+                borderColor = colors.border,
+                padding = PaddingValues(14.dp),
+                modifier = Modifier.fillMaxWidth().testTag("habit_stats_card")
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Habit stats", color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    TextButton(
+                        onClick = { showHabitPicker = true },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                        modifier = Modifier.testTag("choose_habit_stats_button")
+                    ) {
+                        Text("Choose", color = colors.primary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                if (pickedHabits.isEmpty()) {
+                    Text(
+                        "No habits to show yet. Create habits in the Habits tab, then pick up to 3 to display here.",
+                        color = colors.textMuted,
+                        fontSize = 12.sp
+                    )
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        pickedHabits.forEach { h ->
+                            val rate = HabitMath.completionRate30(h)
+                            val total = HabitMath.totalDone(h)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(12.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(h.colorValue()))
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        h.name,
+                                        color = colors.textPrimary,
+                                        fontSize = 12.5.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        "$total days done · $rate% (30d)",
+                                        color = colors.textMuted,
+                                        fontSize = 10.sp
+                                    )
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.LocalFireDepartment, contentDescription = null, tint = if (h.streak > 0) colors.warning else colors.textMuted, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(2.dp))
+                                    Text("${h.streak}", color = colors.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("The rest stays in the habit tracker.", color = colors.textMuted, fontSize = 10.sp)
                 }
             }
         }
@@ -313,8 +474,6 @@ Analyze my weekly stats:
 - Sleep: ${lifeScore.sleepScore}/100
 - Meals: ${lifeScore.mealsScore}/100
 - Habits: ${lifeScore.habitsScore}/100
-- Activity & Rest: ${lifeScore.activityScore}/100
-- Goals: ${lifeScore.goalsScore}/100
 
 Give me a concise 3-point review with practical suggestions, and suggest 1 specific schedule change (e.g. an extra 45m study session or rest block) to fix the weakest area.
 """.trimIndent()
@@ -356,7 +515,7 @@ Give me a concise 3-point review with practical suggestions, and suggest 1 speci
                         borderColor = colors.border,
                         padding = PaddingValues(10.dp)
                     ) {
-                        Text(text = review, color = colors.textPrimary, fontSize = 12.sp, lineHeight = 16.sp)
+                        FioMarkdown(text = review, baseFontSize = 12.sp)
                     }
                 }
             }

@@ -5,6 +5,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -259,8 +261,12 @@ fun FioSidebarDrawer(
 
             FioDivider(modifier = Modifier.padding(vertical = 10.dp))
 
-            // Navigation Items
-            Column(modifier = Modifier.weight(1f)) {
+            // Navigation Items — scrolls so every entry stays reachable on short screens
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+            ) {
                 SectionLabel("Your day")
 
                 NavItem(
@@ -273,6 +279,7 @@ fun FioSidebarDrawer(
                 NavItem(FioScreen.CALENDAR, currentScreen, onSelectScreen, onClose)
                 NavItem(FioScreen.TIMETABLE, currentScreen, onSelectScreen, onClose)
                 NavItem(FioScreen.TIMER, currentScreen, onSelectScreen, onClose)
+                NavItem(FioScreen.HABITS, currentScreen, onSelectScreen, onClose)
 
                 Spacer(modifier = Modifier.height(10.dp))
                 SectionLabel("Study")
@@ -287,7 +294,6 @@ fun FioSidebarDrawer(
                 SectionLabel("Health and progress")
 
                 NavItem(FioScreen.HEALTH, currentScreen, onSelectScreen, onClose)
-                NavItem(FioScreen.HABITS, currentScreen, onSelectScreen, onClose)
                 NavItem(FioScreen.STATS, currentScreen, onSelectScreen, onClose)
             }
 

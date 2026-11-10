@@ -389,28 +389,17 @@ fun HabitsScreen(repository: FioRepository) {
         )
     }
 
-    // Full statistics sheet (heatmap, weekly bars, score curve)
-    habitStatsTarget?.let { habit ->
-        HabitDetailDialog(
-            habit = habit,
-            repository = repository,
-            onDismiss = { habitStatsTarget = null },
-            onEdit = {
-                habitEditTarget = it
-                showHabitDialog = true
-            },
-            onDelete = { habitPendingDelete = it }
-        )
-    }
+    // Full statistics open as a full-screen page from the tracker rows.
 
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(colors.background)
-            .padding(horizontal = 16.dp),
-        contentPadding = PaddingValues(vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(colors.background)
+                .padding(horizontal = 16.dp),
+            contentPadding = PaddingValues(vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
         // --- Header ---
         item {
             com.example.fio.ui.components.FioScreenHeader(
@@ -682,6 +671,25 @@ fun HabitsScreen(repository: FioRepository) {
                     }
                 }
             }
+        }
+        }
+
+        // Full-screen statistics page on top of the tracker (list keeps its position).
+        habitStatsTarget?.let { habit ->
+            HabitDetailScreen(
+                habit = habit,
+                repository = repository,
+                onBack = { habitStatsTarget = null },
+                onEdit = {
+                    habitStatsTarget = null
+                    habitEditTarget = it
+                    showHabitDialog = true
+                },
+                onDelete = {
+                    habitStatsTarget = null
+                    habitPendingDelete = it
+                }
+            )
         }
     }
 }

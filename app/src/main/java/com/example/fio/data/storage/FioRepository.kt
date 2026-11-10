@@ -333,8 +333,6 @@ class FioRepository(private val context: Context) {
         if (sleepScore > 0) { weightedSum += sleepScore * weights.sleep; totalWeight += weights.sleep }
         if (mealScore > 0) { weightedSum += mealScore * weights.meals; totalWeight += weights.meals }
         if (habitScore > 0) { weightedSum += habitScore * weights.habits; totalWeight += weights.habits }
-        if (activityScore > 0) { weightedSum += activityScore * weights.activity; totalWeight += weights.activity }
-        if (goalsScore > 0) { weightedSum += goalsScore * weights.goals; totalWeight += weights.goals }
 
         val overall = if (totalWeight > 0) (weightedSum / totalWeight).roundToInt() else 0
         val trend = 0
@@ -642,6 +640,15 @@ class FioRepository(private val context: Context) {
             }
         }
         saveAll()
+    }
+
+    // --- Habit stats picker: which habits surface on the Progress page (max 3) ---
+    fun habitStatsSelection(): List<String> =
+        prefs.getString("habit_stats_selection", null)
+            ?.split(',')?.filter { it.isNotBlank() } ?: emptyList()
+
+    fun setHabitStatsSelection(ids: List<String>) {
+        prefs.edit().putString("habit_stats_selection", ids.joinToString(",")).apply()
     }
 
     fun addHabit(item: HabitItem) {
@@ -1290,6 +1297,10 @@ class FioRepository(private val context: Context) {
         val pendingSleep = prefs.getLong("sleep_start_timestamp", 0L)
         if (pendingSleep > 0L) root.put("pendingSleepStart", pendingSleep)
 
+        // 16. Progress-page habit stats picker: which habits are featured there (max 3).
+        val habitStatsPick = prefs.getString("habit_stats_selection", "").orEmpty()
+        if (habitStatsPick.isNotBlank()) root.put("habitStatsSelection", habitStatsPick)
+
         return if (pretty) root.toString(2) else root.toString()
     }
 
@@ -1861,6 +1872,13 @@ class FioRepository(private val context: Context) {
                 )
                 _settings.value = updatedSettings
                 saveSettingsToPrefs(updatedSettings)
+            }
+
+            // Progress-page habit stats picker (which habits are featured there)
+            if (root.has("habitStatsSelection")) {
+                prefs.edit()
+                    .putString("habit_stats_selection", root.optString("habitStatsSelection", ""))
+                    .apply()
             }
 
             true

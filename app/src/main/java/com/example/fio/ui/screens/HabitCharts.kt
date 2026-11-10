@@ -1,5 +1,6 @@
 package com.example.fio.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -9,11 +10,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -29,7 +31,6 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -365,16 +366,22 @@ fun HabitHeatmap(
 /** Wiring set by HabitDetailDialog so the heatmap tap can reach the repository. */
 private var onHeatmapCellTap: (HabitItem, LocalDate) -> Unit = { _, _ -> }
 
+/**
+ * Full-screen habit statistics page, opened from the Habits tab: heatmap with
+ * tap-to-fix records, weekly frequency bars and the rolling score curve, with
+ * a back button in the top bar and the actions pinned at the bottom.
+ */
 @Composable
-fun HabitDetailDialog(
+fun HabitDetailScreen(
     habit: HabitItem,
     repository: com.example.fio.data.storage.FioRepository,
-    onDismiss: () -> Unit,
+    onBack: () -> Unit,
     onEdit: (HabitItem) -> Unit,
     onDelete: (HabitItem) -> Unit
 ) {
     val colors = LocalFioColors.current
     val haptics = rememberFioHaptics()
+    BackHandler(enabled = true) { onBack() }
     onHeatmapCellTap = { h, date ->
         val complete = h.completedDates.contains(date.toString())
         val goal = h.dailyGoal.coerceAtLeast(1)
@@ -387,129 +394,151 @@ fun HabitDetailDialog(
     val rate30 = HabitMath.completionRate30(habit)
     val (thisWeek, lastWeek) = HabitMath.thisWeekVsLast(habit)
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = colors.surface,
-        title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(14.dp)
-                        .clip(CircleShape)
-                        .background(habitColor)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Column {
-                    Text(
-                        habit.name,
-                        color = colors.textPrimary,
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    if (habit.question.isNotBlank()) {
-                        Text(habit.question, color = colors.textMuted, fontSize = 11.sp, maxLines = 1)
-                    }
-                }
-            }
-        },
-        text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = (LocalConfiguration.current.screenHeightDp * 0.72f).dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(colors.background)
+    ) {
+        // --- Top bar: back button + identity ---
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 4.dp, end = 16.dp, top = 6.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(
+                onClick = {
+                    haptics.tick()
+                    onBack()
+                },
+                modifier = Modifier.testTag("habit_detail_back_button")
             ) {
-                // --- Summary pill strip ---
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    FioBadge(
-                        text = "${habit.streak} streak",
-                        color = if (habit.streak > 0) colors.warning else colors.textMuted
-                    )
-                    FioBadge(text = "Best ${habit.bestStreak}", color = colors.primary)
-                    FioBadge(text = "$totalDone done", color = colors.success)
-                    FioBadge(text = "$rate30% (30d)", color = colors.info)
-                }
-                Text(
-                    "This week $thisWeek · last week $lastWeek · reminder " +
-                        (habit.reminderMinutes?.let { m ->
-                            val h12 = ((m / 60 + 11) % 12) + 1
-                            "$h12:${String.format("%02d", m % 60)} ${if (m / 60 < 12) "AM" else "PM"}"
-                        } ?: "off"),
-                    style = FioType.caption,
-                    color = colors.textMuted
-                )
-
-                FioDivider()
-
-                // --- Heatmap ---
-                HabitHeatmap(habit = habit)
-
-                FioDivider()
-
-                // --- Weekly frequency bars ---
-                Text(
-                    "Completions per week",
-                    style = FioType.caption,
-                    color = colors.textMuted
-                )
-                HabitWeeklyBars(habit = habit)
-
-                FioDivider()
-
-                // --- Score curve ---
-                Text(
-                    "Habit score (90 days)",
-                    style = FioType.caption,
-                    color = colors.textMuted
-                )
-                HabitScoreLine(habit = habit)
-
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    "Created ${formatTimestamp(habit.loggedAtMillis)}",
-                    style = FioType.caption,
-                    color = colors.textMuted
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back to habits",
+                    tint = colors.textPrimary,
+                    modifier = Modifier.size(22.dp)
                 )
             }
-        },
-        confirmButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                TextButton(onClick = {
-                    haptics.tick()
-                    onDismiss()
-                    onEdit(habit)
-                }) {
-                    Icon(Icons.Default.Edit, contentDescription = null, tint = colors.primary, modifier = Modifier.size(15.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Edit", color = colors.primary, fontSize = 12.sp)
+            Box(
+                modifier = Modifier
+                    .size(14.dp)
+                    .clip(CircleShape)
+                    .background(habitColor)
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    habit.name,
+                    color = colors.textPrimary,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
+                if (habit.question.isNotBlank()) {
+                    Text(habit.question, color = colors.textMuted, fontSize = 11.sp, maxLines = 1)
                 }
-                TextButton(onClick = {
-                    haptics.tick()
-                    repository.updateHabit(habit.copy(archived = !habit.archived))
-                    onDismiss()
-                }) {
-                    Icon(Icons.Default.Archive, contentDescription = null, tint = colors.warning, modifier = Modifier.size(15.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(if (habit.archived) "Restore" else "Archive", color = colors.warning, fontSize = 12.sp)
-                }
-                TextButton(onClick = {
-                    haptics.longPress()
-                    onDismiss()
-                    onDelete(habit)
-                }) {
-                    Icon(Icons.Default.Delete, contentDescription = null, tint = colors.error, modifier = Modifier.size(15.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Delete", color = colors.error, fontSize = 12.sp)
-                }
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Close", color = colors.textMuted)
             }
         }
-    )
+
+        // --- Scrollable statistics ---
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // --- Summary pill strip ---
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                FioBadge(
+                    text = "${habit.streak} streak",
+                    color = if (habit.streak > 0) colors.warning else colors.textMuted
+                )
+                FioBadge(text = "Best ${habit.bestStreak}", color = colors.primary)
+                FioBadge(text = "$totalDone done", color = colors.success)
+                FioBadge(text = "$rate30% (30d)", color = colors.info)
+            }
+            Text(
+                "This week $thisWeek · last week $lastWeek · reminder " +
+                    (habit.reminderMinutes?.let { m ->
+                        val h12 = ((m / 60 + 11) % 12) + 1
+                        "$h12:${String.format("%02d", m % 60)} ${if (m / 60 < 12) "AM" else "PM"}"
+                    } ?: "off"),
+                style = FioType.caption,
+                color = colors.textMuted
+            )
+
+            FioDivider()
+
+            // --- Heatmap ---
+            HabitHeatmap(habit = habit)
+
+            FioDivider()
+
+            // --- Weekly frequency bars ---
+            Text(
+                "Completions per week",
+                style = FioType.caption,
+                color = colors.textMuted
+            )
+            HabitWeeklyBars(habit = habit)
+
+            FioDivider()
+
+            // --- Score curve ---
+            Text(
+                "Habit score (90 days)",
+                style = FioType.caption,
+                color = colors.textMuted
+            )
+            HabitScoreLine(habit = habit)
+
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                "Created ${formatTimestamp(habit.loggedAtMillis)}",
+                style = FioType.caption,
+                color = colors.textMuted
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+        }
+
+        // --- Pinned actions ---
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(colors.surface)
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            TextButton(onClick = {
+                haptics.tick()
+                onEdit(habit)
+            }) {
+                Icon(Icons.Default.Edit, contentDescription = null, tint = colors.primary, modifier = Modifier.size(15.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Edit", color = colors.primary, fontSize = 12.sp)
+            }
+            TextButton(onClick = {
+                haptics.tick()
+                repository.updateHabit(habit.copy(archived = !habit.archived))
+            }) {
+                Icon(Icons.Default.Archive, contentDescription = null, tint = colors.warning, modifier = Modifier.size(15.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(if (habit.archived) "Restore" else "Archive", color = colors.warning, fontSize = 12.sp)
+            }
+            TextButton(onClick = {
+                haptics.longPress()
+                onDelete(habit)
+            }) {
+                Icon(Icons.Default.Delete, contentDescription = null, tint = colors.error, modifier = Modifier.size(15.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Delete", color = colors.error, fontSize = 12.sp)
+            }
+        }
+    }
 }
 
 /** Weekly frequency bars: one rounded bar per week, oldest on the left. */
