@@ -4,6 +4,9 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.READ_CALENDAR" />
     <uses-permission android:name="android.permission.WRITE_CALENDAR" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
@@ -36,12 +39,26 @@
             android:name="com.example.fio.alarms.TimetableAlarmReceiver"
             android:exported="false" />
         <receiver
+            android:name="com.example.fio.alarms.FioReminderReceiver"
+            android:exported="false" />
+        <receiver
             android:name="com.example.fio.alarms.TimetableBootReceiver"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+
+        <!-- Keeps the focus timer counting down (with a progress notification)
+             while Fio is minimised. -->
+        <service
+            android:name="com.example.fio.focus.FocusTimerService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="keeps the focus timer countdown running and visible while the app is minimised" />
+        </service>
 
         <!-- Shares camera-capture files with the camera app (no permission needed). -->
         <provider

@@ -27,11 +27,65 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.os.Build
+import android.view.HapticFeedbackConstants
+import android.view.View
 import com.example.fio.data.model.CourseSection
 import com.example.fio.data.model.ProposedScheduleChange
 import com.example.fio.data.model.formatTimestamp
 import com.example.fio.ui.theme.FioType
 import com.example.fio.ui.theme.LocalFioColors
+
+/**
+ * Quiet haptic ticks, used app-wide so touches feel physical: every
+ * long-press action, habit logging, timer controls and confirmations.
+ * One vibration each â€” never buzzing loops.
+ */
+class FioHaptics(private val view: View) {
+    /** Standard long-press feedback (chips, cards, sessions). */
+    fun longPress() {
+        runCatching { view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS) }
+    }
+
+    /** Light tick for small taps: logging a habit, copy, toggles. */
+    fun tick() {
+        runCatching {
+            if (Build.VERSION.SDK_INT >= 30) {
+                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+            } else {
+                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+            }
+        }
+    }
+
+    /** Positive confirmation: habit goal reached, timer finished. */
+    fun confirm() {
+        runCatching {
+            if (Build.VERSION.SDK_INT >= 30) {
+                view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+            } else {
+                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+            }
+        }
+    }
+
+    /** Warning pulse: broken lockdown, deleted data. */
+    fun warn() {
+        runCatching {
+            if (Build.VERSION.SDK_INT >= 30) {
+                view.performHapticFeedback(HapticFeedbackConstants.REJECT)
+            } else {
+                view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            }
+        }
+    }
+}
+
+@Composable
+fun rememberFioHaptics(): FioHaptics {
+    val view = androidx.compose.ui.platform.LocalView.current
+    return remember { FioHaptics(view) }
+}
 
 enum class FioScreen(val title: String, val icon: ImageVector) {
     DASHBOARD("Home", Icons.Default.Home),
@@ -179,7 +233,7 @@ fun FioSidebarDrawer(
                 .fillMaxSize()
                 .padding(vertical = 20.dp, horizontal = 10.dp)
         ) {
-            // Header with user profile (no logo — clean)
+            // Header with user profile (no logo ï¿½ clean)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
@@ -396,7 +450,7 @@ fun AiScheduleProposalDialog(
 // Fio design system primitives (v2)
 // ---------------------------------------------------------------------------
 
-/** Large quiet screen heading. No card, no border — type carries the hierarchy. */
+/** Large quiet screen heading. No card, no border ï¿½ type carries the hierarchy. */
 @Composable
 fun FioScreenHeader(
     title: String,
@@ -455,7 +509,7 @@ fun FioSectionHeader(
 
 /**
  * The one primary action in a view. In the dark theme it is a white pill with
- * ink text — the reference's unmistakable action treatment, and always legible.
+ * ink text ï¿½ the reference's unmistakable action treatment, and always legible.
  */
 @Composable
 fun FioPrimaryButton(
@@ -464,7 +518,8 @@ fun FioPrimaryButton(
     modifier: Modifier = Modifier,
     icon: ImageVector? = null,
     enabled: Boolean = true,
-    compact: Boolean = false
+    compact: Boolean = false,
+    loading: Boolean = false
 ) {
     val colors = LocalFioColors.current
     val fill = if (enabled) colors.textPrimary else colors.surfaceElevated
@@ -473,7 +528,7 @@ fun FioPrimaryButton(
         modifier = modifier
             .clip(RoundedCornerShape(999.dp))
             .background(fill)
-            .clickable(enabled = enabled, onClick = onClick)
+            .clickable(enabled = enabled && !loading, onClick = onClick)
             .heightIn(min = if (compact) 36.dp else 44.dp)
             .padding(
                 horizontal = if (compact) 10.dp else 20.dp,
@@ -482,7 +537,10 @@ fun FioPrimaryButton(
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (icon != null) {
+        if (loading) {
+            CircularProgressIndicator(modifier = Modifier.size(if (compact) 14.dp else 16.dp), strokeWidth = 2.dp, color = content)
+            Spacer(modifier = Modifier.width(6.dp))
+        } else if (icon != null) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
@@ -512,14 +570,15 @@ fun FioSecondaryButton(
     modifier: Modifier = Modifier,
     icon: ImageVector? = null,
     enabled: Boolean = true,
-    compact: Boolean = false
+    compact: Boolean = false,
+    loading: Boolean = false
 ) {
     val colors = LocalFioColors.current
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(999.dp))
             .background(colors.surfaceElevated)
-            .clickable(enabled = enabled, onClick = onClick)
+            .clickable(enabled = enabled && !loading, onClick = onClick)
             .heightIn(min = if (compact) 36.dp else 44.dp)
             .padding(
                 horizontal = if (compact) 10.dp else 18.dp,
@@ -528,7 +587,10 @@ fun FioSecondaryButton(
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (icon != null) {
+        if (loading) {
+            CircularProgressIndicator(modifier = Modifier.size(if (compact) 14.dp else 16.dp), strokeWidth = 2.dp, color = colors.primary)
+            Spacer(modifier = Modifier.width(6.dp))
+        } else if (icon != null) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,

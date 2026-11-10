@@ -16,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -25,127 +26,84 @@ import com.example.fio.data.model.FocusSessionLog
 import com.example.fio.data.model.SessionStatus
 import com.example.fio.data.model.formatTimestamp
 import com.example.fio.data.storage.FioRepository
+import com.example.fio.focus.FocusTimer
 import com.example.fio.ui.components.FioBadge
 import com.example.fio.ui.components.FioCard
 import com.example.fio.ui.components.FioDivider
+import com.example.fio.ui.components.rememberFioHaptics
 import com.example.fio.ui.theme.LocalFioColors
 import kotlinx.coroutines.delay
-
-fun calculateStrikesForDuration(minutes: Int): Int {
-    return when {
-        minutes < 60 -> 1
-        minutes < 120 -> 3
-        minutes < 180 -> 5
-        minutes < 240 -> 7
-        else -> 10
-    }
-}
 
 @Composable
 fun TimerLockdownScreen(repository: FioRepository) {
     val colors = LocalFioColors.current
+    val context = LocalContext.current
     val settings by repository.settings.collectAsState()
     val sessionLogs by repository.sessionLogs.collectAsState()
+    val haptics = rememberFioHaptics()
 
     // Timer Config
     var selectedMinutes by remember { mutableStateOf(50) }
     var isLockdownEnabled by remember { mutableStateOf(false) }
 
-    // Running State
-    var isRunning by remember { mutableStateOf(false) }
-    var secondsRemaining by remember { mutableStateOf(selectedMinutes * 60) }
-    var isInBreak by remember { mutableStateOf(false) }
-    var breakSecondsRemaining by remember { mutableStateOf(settings.breakDurationMinutes * 60) }
-
-    // Strikes State
-    val startingStrikes = remember(selectedMinutes) { calculateStrikesForDuration(selectedMinutes) }
-    var currentStrikesRemaining by remember { mutableStateOf(startingStrikes) }
-    var strikesUsedCount by remember { mutableStateOf(0) }
-    var breaksTakenCount by remember { mutableStateOf(0) }
-
-    // Emergency Pause (1 per session, up to 5 min)
-    var emergencyPauseUsed by remember { mutableStateOf(false) }
-    var isEmergencyPaused by remember { mutableStateOf(false) }
-    var emergencyPauseSeconds by remember { mutableStateOf(300) } // 5 mins
-
-    // Completion Dialog
-    var showSummaryDialog by remember { mutableStateOf(false) }
-    var lastFinishedStatus by remember { mutableStateOf(SessionStatus.COMPLETED) }
-
-    // Keep strikes remaining synced when changing duration before start
-    LaunchedEffect(selectedMinutes) {
-        if (!isRunning) {
-            secondsRemaining = selectedMinutes * 60
-            currentStrikesRemaining = calculateStrikesForDuration(selectedMinutes)
+    // A one-second pulse: while a session runs, the screen drives the
+    // singleton's tick and recomposes from its wall-clock-accurate state.
+    // Closing the page changes nothing — the foreground service keeps the
+    // countdown and the notification banner alive.
+    var tickPulse by remember { mutableStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1000L)
+            if (FocusTimer.state.running()) FocusTimer.tick()
+            tickPulse++
         }
     }
+    // Instant refresh when something happens without waiting a second
+    // (start, stop, reset, strike) — recompose immediately after events.
+    var eventPulse by remember { mutableStateOf(0) }
 
-    // Timer countdown loop
-    LaunchedEffect(isRunning, isEmergencyPaused, isInBreak) {
-        while (isRunning) {
-            delay(1000L)
-            if (isEmergencyPaused) {
-                if (emergencyPauseSeconds > 0) {
-                    emergencyPauseSeconds--
-                } else {
-                    isEmergencyPaused = false // resume automatically
-                }
-            } else if (isInBreak) {
-                if (breakSecondsRemaining > 0) {
-                    breakSecondsRemaining--
-                } else {
-                    // Break finished! Award 1 strike back (never above starting number)
-                    isInBreak = false
-                    breaksTakenCount++
-                    currentStrikesRemaining = (currentStrikesRemaining + 1).coerceAtMost(startingStrikes)
-                    breakSecondsRemaining = settings.breakDurationMinutes * 60
-                }
-            } else {
-                if (secondsRemaining > 0) {
-                    secondsRemaining--
-                    // Check if it's time for a scheduled break (every breakFrequencyMinutes)
-                    val elapsedSeconds = (selectedMinutes * 60) - secondsRemaining
-                    if (selectedMinutes >= 50 && elapsedSeconds > 0 && elapsedSeconds % (settings.breakFrequencyMinutes * 60) == 0 && secondsRemaining > 300) {
-                        isInBreak = true
-                        breakSecondsRemaining = settings.breakDurationMinutes * 60
-                    }
-                } else {
-                    // Session Completed Successfully!
-                    isRunning = false
-                    lastFinishedStatus = SessionStatus.COMPLETED
-                    repository.logFocusSession(
-                        FocusSessionLog(
-                            title = "Focus Session",
-                            plannedMinutes = selectedMinutes,
-                            actualMinutes = selectedMinutes,
-                            isLockdownEnabled = isLockdownEnabled,
-                            startingStrikes = startingStrikes,
-                            strikesUsed = strikesUsedCount,
-                            breaksTaken = breaksTakenCount,
-                            status = SessionStatus.COMPLETED
-                        )
-                    )
-                    showSummaryDialog = true
-                }
-            }
+    val ts = remember(tickPulse, eventPulse) { FocusTimer.state }
+    val isRunning = ts.running()
+
+    // Summary dialog: shown once a session finishes, then cleared from the singleton.
+    var showSummaryDialog by remember { mutableStateOf(false) }
+    var lastFinishedStatus by remember { mutableStateOf<SessionStatus?>(null) }
+    var summaryMinutes by remember { mutableStateOf(0) }
+    var summaryStrikesUsed by remember { mutableStateOf(0) }
+    var summaryStrikesTotal by remember { mutableStateOf(0) }
+    var summaryBreaks by remember { mutableStateOf(0) }
+
+    // Surface the finish event (fires even if the user was on another page).
+    LaunchedEffect(ts.phase, ts.finishedStatus) {
+        if (ts.phase == FocusTimer.Phase.DONE && ts.finishedStatus != null && !showSummaryDialog) {
+            lastFinishedStatus = ts.finishedStatus
+            summaryMinutes = ts.alreadyFocusedMinutes
+            summaryStrikesUsed = ts.strikesUsed
+            summaryStrikesTotal = ts.startingStrikes
+            summaryBreaks = ts.breaksTaken
+            showSummaryDialog = true
         }
     }
 
     // End / Broken Session Dialog
     if (showSummaryDialog) {
+        val finished = lastFinishedStatus ?: SessionStatus.COMPLETED
         AlertDialog(
-            onDismissRequest = { showSummaryDialog = false },
+            onDismissRequest = {
+                showSummaryDialog = false
+                FocusTimer.consumeFinished()
+            },
             containerColor = colors.surface,
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        imageVector = if (lastFinishedStatus == SessionStatus.COMPLETED) Icons.Default.CheckCircle else Icons.Default.Cancel,
+                        imageVector = if (finished == SessionStatus.COMPLETED) Icons.Default.CheckCircle else Icons.Default.Cancel,
                         contentDescription = null,
-                        tint = if (lastFinishedStatus == SessionStatus.COMPLETED) colors.success else colors.error
+                        tint = if (finished == SessionStatus.COMPLETED) colors.success else colors.error
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = if (lastFinishedStatus == SessionStatus.COMPLETED) "Session Finished!" else "Session Broken",
+                        text = if (finished == SessionStatus.COMPLETED) "Session Finished!" else "Session Broken",
                         color = colors.textPrimary,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold
@@ -155,7 +113,7 @@ fun TimerLockdownScreen(repository: FioRepository) {
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = if (lastFinishedStatus == SessionStatus.COMPLETED)
+                        text = if (finished == SessionStatus.COMPLETED)
                             "Great work staying in deep focus."
                         else "You ran out of strikes during lockdown mode.",
                         color = colors.textSecondary,
@@ -166,16 +124,20 @@ fun TimerLockdownScreen(repository: FioRepository) {
                         borderColor = colors.border,
                         padding = PaddingValues(10.dp)
                     ) {
-                        Text("• Time Focused: $selectedMinutes min", color = colors.textPrimary, fontSize = 12.sp)
-                        Text("• Strikes Used: $strikesUsedCount / $startingStrikes", color = colors.textPrimary, fontSize = 12.sp)
-                        Text("• Breaks Taken: $breaksTakenCount", color = colors.textPrimary, fontSize = 12.sp)
+                        Text("• Time Focused: $summaryMinutes min", color = colors.textPrimary, fontSize = 12.sp)
+                        Text("• Strikes Used: $summaryStrikesUsed / $summaryStrikesTotal", color = colors.textPrimary, fontSize = 12.sp)
+                        Text("• Breaks Taken: $summaryBreaks", color = colors.textPrimary, fontSize = 12.sp)
                         Text("• Logged into Study & Life Stats", color = colors.primary, fontSize = 11.sp)
                     }
                 }
             },
             confirmButton = {
                 Button(
-                    onClick = { showSummaryDialog = false },
+                    onClick = {
+                        showSummaryDialog = false
+                        FocusTimer.consumeFinished()
+                        eventPulse++
+                    },
                     colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -197,7 +159,7 @@ fun TimerLockdownScreen(repository: FioRepository) {
         item {
             com.example.fio.ui.components.FioScreenHeader(
                 title = "Focus",
-                subtitle = "One session at a time. Leaving early costs a strike."
+                subtitle = "One session at a time. It keeps counting even when you minimise Fio."
             )
         }
 
@@ -214,24 +176,31 @@ fun TimerLockdownScreen(repository: FioRepository) {
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     // Status Badge
-                    val statusText = when {
-                        isEmergencyPaused -> "EMERGENCY PAUSED (${emergencyPauseSeconds}s left)"
-                        isInBreak -> "REST BREAK (Free to leave - no strikes)"
-                        isRunning -> if (isLockdownEnabled) "LOCKDOWN ACTIVE" else "FOCUSING"
+                    val statusText = when (ts.phase) {
+                        FocusTimer.Phase.EMERGENCY -> "EMERGENCY PAUSED (${((ts.emergencyEndsAt - System.currentTimeMillis()) / 1000L).coerceAtLeast(0)}s left)"
+                        FocusTimer.Phase.BREAK -> "REST BREAK (Free to leave - no strikes)"
+                        FocusTimer.Phase.FOCUS -> if (ts.lockdown) "LOCKDOWN ACTIVE" else "FOCUSING"
+                        FocusTimer.Phase.DONE -> "SESSION OVER"
                         else -> "TIMER READY"
                     }
-                    val statusColor = when {
-                        isEmergencyPaused -> colors.warning
-                        isInBreak -> colors.info
-                        isRunning -> if (isLockdownEnabled) colors.error else colors.primary
+                    val statusColor = when (ts.phase) {
+                        FocusTimer.Phase.EMERGENCY -> colors.warning
+                        FocusTimer.Phase.BREAK -> colors.info
+                        FocusTimer.Phase.FOCUS -> if (ts.lockdown) colors.error else colors.primary
                         else -> colors.textMuted
                     }
                     FioBadge(text = statusText, color = statusColor)
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Circular Countdown Display
-                    val displaySeconds = if (isInBreak) breakSecondsRemaining else secondsRemaining
+                    // Circular Countdown Display (wall-clock based, always accurate)
+                    val now = System.currentTimeMillis()
+                    val displaySeconds = when (ts.phase) {
+                        FocusTimer.Phase.FOCUS -> ((ts.focusEndsAt - now) / 1000L).coerceAtLeast(0)
+                        FocusTimer.Phase.BREAK -> ((ts.breakEndsAt - now) / 1000L).coerceAtLeast(0)
+                        FocusTimer.Phase.EMERGENCY -> ((ts.emergencyEndsAt - now) / 1000L).coerceAtLeast(0)
+                        else -> 0L
+                    }.toInt()
                     val mins = displaySeconds / 60
                     val secs = displaySeconds % 60
                     val timeString = String.format(java.util.Locale.getDefault(), "%02d:%02d", mins, secs)
@@ -241,7 +210,7 @@ fun TimerLockdownScreen(repository: FioRepository) {
                             .size(180.dp)
                             .clip(CircleShape)
                             .background(colors.surfaceElevated)
-                            .border(3.dp, if (isInBreak) colors.info else colors.primary, CircleShape),
+                            .border(3.dp, if (ts.phase == FocusTimer.Phase.BREAK) colors.info else colors.primary, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -253,7 +222,7 @@ fun TimerLockdownScreen(repository: FioRepository) {
                                 fontFamily = FontFamily.Monospace
                             )
                             Text(
-                                text = if (isInBreak) "Break Ends Soon" else "$selectedMinutes min session",
+                                text = if (ts.phase == FocusTimer.Phase.BREAK) "Break Ends Soon" else "${ts.plannedMinutes} min session",
                                 color = colors.textMuted,
                                 fontSize = 11.sp
                             )
@@ -263,15 +232,15 @@ fun TimerLockdownScreen(repository: FioRepository) {
                     Spacer(modifier = Modifier.height(16.dp))
 
                     // Lockdown Strikes Info
-                    if (isLockdownEnabled) {
+                    if (ts.lockdown && isRunning) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.Center,
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text("Strikes Remaining: ", color = colors.textSecondary, fontSize = 12.sp)
-                            repeat(startingStrikes) { idx ->
-                                val isLost = idx >= currentStrikesRemaining
+                            repeat(ts.startingStrikes) { idx ->
+                                val isLost = idx >= ts.strikesRemaining
                                 Icon(
                                     imageVector = if (isLost) Icons.Default.Cancel else Icons.Default.Security,
                                     contentDescription = null,
@@ -281,42 +250,21 @@ fun TimerLockdownScreen(repository: FioRepository) {
                             }
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "$currentStrikesRemaining / $startingStrikes",
-                                color = if (currentStrikesRemaining <= 1) colors.error else colors.primary,
+                                text = "${ts.strikesRemaining} / ${ts.startingStrikes}",
+                                color = if (ts.strikesRemaining <= 1) colors.error else colors.primary,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         }
 
                         // Simulation button for testing app exit in emulator
-                        if (isRunning && !isInBreak) {
+                        if (ts.phase == FocusTimer.Phase.FOCUS) {
                             Spacer(modifier = Modifier.height(6.dp))
                             TextButton(
                                 onClick = {
-                                    // Trigger a strike for leaving beyond grace period
-                                    if (currentStrikesRemaining > 1) {
-                                        currentStrikesRemaining--
-                                        strikesUsedCount++
-                                    } else {
-                                        // Out of strikes -> broken session
-                                        currentStrikesRemaining = 0
-                                        strikesUsedCount++
-                                        isRunning = false
-                                        lastFinishedStatus = SessionStatus.BROKEN
-                                        repository.logFocusSession(
-                                            FocusSessionLog(
-                                                title = "Focus Session (Broken)",
-                                                plannedMinutes = selectedMinutes,
-                                                actualMinutes = (selectedMinutes * 60 - secondsRemaining) / 60,
-                                                isLockdownEnabled = true,
-                                                startingStrikes = startingStrikes,
-                                                strikesUsed = strikesUsedCount,
-                                                breaksTaken = breaksTakenCount,
-                                                status = SessionStatus.BROKEN
-                                            )
-                                        )
-                                        showSummaryDialog = true
-                                    }
+                                    haptics.warn()
+                                    FocusTimer.useStrike()
+                                    eventPulse++
                                 }
                             ) {
                                 Text("Test: Simulate Leaving App Beyond 15s Grace", color = colors.textMuted, fontSize = 10.sp)
@@ -335,13 +283,15 @@ fun TimerLockdownScreen(repository: FioRepository) {
                         if (!isRunning) {
                             Button(
                                 onClick = {
-                                    isRunning = true
-                                    secondsRemaining = selectedMinutes * 60
-                                    currentStrikesRemaining = startingStrikes
-                                    strikesUsedCount = 0
-                                    breaksTakenCount = 0
-                                    emergencyPauseUsed = false
-                                    isEmergencyPaused = false
+                                    haptics.confirm()
+                                    FocusTimer.start(
+                                        minutes = selectedMinutes,
+                                        lockdown = isLockdownEnabled,
+                                        breakFrequencyMinutes = settings.breakFrequencyMinutes,
+                                        breakDurationMinutes = settings.breakDurationMinutes,
+                                        context = context
+                                    )
+                                    eventPulse++
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
                                 shape = RoundedCornerShape(14.dp),
@@ -355,12 +305,11 @@ fun TimerLockdownScreen(repository: FioRepository) {
                             // Emergency Pause (1 per session, max 5 minutes)
                             OutlinedButton(
                                 onClick = {
-                                    if (!emergencyPauseUsed) {
-                                        emergencyPauseUsed = true
-                                        isEmergencyPaused = !isEmergencyPaused
-                                    }
+                                    haptics.tick()
+                                    FocusTimer.toggleEmergencyPause(context)
+                                    eventPulse++
                                 },
-                                enabled = !emergencyPauseUsed || isEmergencyPaused,
+                                enabled = !ts.emergencyUsed || ts.phase == FocusTimer.Phase.EMERGENCY,
                                 colors = ButtonDefaults.outlinedButtonColors(
                                     contentColor = colors.textPrimary,
                                     containerColor = colors.surfaceElevated
@@ -372,18 +321,18 @@ fun TimerLockdownScreen(repository: FioRepository) {
                                 Icon(imageVector = Icons.Default.Pause, contentDescription = null, tint = colors.textSecondary, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    if (isEmergencyPaused) "Resume" else if (emergencyPauseUsed) "Pause Used" else "1x Pause",
+                                    if (ts.phase == FocusTimer.Phase.EMERGENCY) "Resume" else if (ts.emergencyUsed) "Pause Used" else "1x Pause",
                                     fontSize = 11.sp,
-                                    color = if (emergencyPauseUsed && !isEmergencyPaused) colors.textMuted else colors.textPrimary
+                                    color = if (ts.emergencyUsed && ts.phase != FocusTimer.Phase.EMERGENCY) colors.textMuted else colors.textPrimary
                                 )
                             }
 
                             // Stop / Abandon
                             Button(
                                 onClick = {
-                                    isRunning = false
-                                    isEmergencyPaused = false
-                                    isInBreak = false
+                                    haptics.warn()
+                                    FocusTimer.stop(context)
+                                    eventPulse++
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = colors.surfaceElevated),
                                 shape = RoundedCornerShape(14.dp),
@@ -397,16 +346,9 @@ fun TimerLockdownScreen(repository: FioRepository) {
                     Spacer(modifier = Modifier.height(10.dp))
                     OutlinedButton(
                         onClick = {
-                            isRunning = false
-                            isInBreak = false
-                            isEmergencyPaused = false
-                            emergencyPauseUsed = false
-                            emergencyPauseSeconds = 300
-                            secondsRemaining = selectedMinutes * 60
-                            breakSecondsRemaining = settings.breakDurationMinutes * 60
-                            currentStrikesRemaining = startingStrikes
-                            strikesUsedCount = 0
-                            breaksTakenCount = 0
+                            haptics.tick()
+                            FocusTimer.reset(context)
+                            eventPulse++
                         },
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = colors.textPrimary,
@@ -451,7 +393,10 @@ fun TimerLockdownScreen(repository: FioRepository) {
                                     .clip(RoundedCornerShape(12.dp))
                                     .background(if (isSelected) colors.primaryContainer else colors.surfaceElevated)
                                     .border(1.dp, if (isSelected) colors.primary else colors.border, RoundedCornerShape(12.dp))
-                                    .clickable { selectedMinutes = mins }
+                                    .clickable {
+                                        haptics.tick()
+                                        selectedMinutes = mins
+                                    }
                                     .padding(vertical = 8.dp),
                                 contentAlignment = Alignment.Center
                             ) {
@@ -463,7 +408,7 @@ fun TimerLockdownScreen(repository: FioRepository) {
                                         fontSize = 12.sp
                                     )
                                     Text(
-                                        text = "${calculateStrikesForDuration(mins)} strike",
+                                        text = "${FocusTimer.calculateStrikesForDuration(mins)} strike",
                                         color = colors.textMuted,
                                         fontSize = 9.sp
                                     )
@@ -489,14 +434,17 @@ fun TimerLockdownScreen(repository: FioRepository) {
                                 Text("Lockdown Mode (Off by default)", color = colors.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                             }
                             Text(
-                                text = "Leaving app beyond 15s grace costs 1 strike. $startingStrikes strikes available for this ${selectedMinutes}m session.",
+                                text = "Leaving app beyond 15s grace costs 1 strike. ${FocusTimer.calculateStrikesForDuration(selectedMinutes)} strikes available for this ${selectedMinutes}m session.",
                                 color = colors.textMuted,
                                 fontSize = 11.sp
                             )
                         }
                         Switch(
                             checked = isLockdownEnabled,
-                            onCheckedChange = { isLockdownEnabled = it },
+                            onCheckedChange = {
+                                haptics.tick()
+                                isLockdownEnabled = it
+                            },
                             colors = SwitchDefaults.colors(
                                 checkedThumbColor = Color.White,
                                 checkedTrackColor = colors.primary

@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.fio.data.ai.AiResult
 import com.example.fio.data.ai.FioAiClient
+import com.example.fio.data.ai.FriendlyAiError
 import com.example.fio.data.document.DocumentImporter
 import com.example.fio.data.model.*
 import com.example.fio.data.ai.AiImageHelper
@@ -97,7 +98,7 @@ fun StudyCompanionScreen(
     val currentCourse = courses.find { it.id == selectedCourseId }
     val courseDocs = documents.filter { it.courseId == selectedCourseId }
     val courseFlashcards = flashcards.filter { it.courseId == selectedCourseId }
-    val courseChatMessages = chatHistory.filter { it.courseId == selectedCourseId }
+    val courseChatMessages = chatHistory.filter { it.courseId == selectedCourseId && it.channel == "STUDY" }
 
     // Claude-style conversation title: the chat is named after its first
     // question, so each subject session reads like a titled conversation.
@@ -187,19 +188,32 @@ fun StudyCompanionScreen(
         // feed it to the model so it has the same conversation visible on
         // screen (continuity across turns, per subject chat window).
         val priorThread = chatHistory
-            .filter { it.courseId == activeCourse.id }
+            .filter { it.courseId == activeCourse.id && it.channel == "STUDY" }
             .takeLast(10)
         isAiLoading = true
-        repository.addChatMessage(ChatMessage(sender = "You", text = prompt, courseId = activeCourse.id))
+        repository.addChatMessage(ChatMessage(sender = "You", text = prompt, courseId = activeCourse.id, channel = "STUDY"))
         aiQuery = ""
         aiJob = coroutineScope.launch {
             try {
                 val storedImg = if (photoUri != null) ImageStorage.processAndStoreImage(context, photoUri) else null
                 val chunks = courseDocs.flatMap { it.chunks }
+                // Persona per section — every mode teaches, just with different
+                // approach, tone and style:
+                val (persona, tone) = when (activeCourse.sectionType) {
+                    SectionType.STUDY -> (
+                        "You are Wingman, a precise personal study tutor answering questions based on course material and diagrams. Subject: ${activeCourse.name}. Structure answers with short steps, key definitions and what to memorise."
+                        ) to "Respond in clean markdown, focused exam-prep style: clear short steps, bold key terms, no filler."
+                    SectionType.LEISURE -> (
+                        "You are Wingman in relaxed mode for the hobby/leisure subject \u201c${activeCourse.name}\u201d. Explain things like a laid-back mentor chatting over coffee: warm and conversational, everyday analogies, a friendly nudge or two — but always land a clear takeaway so the user genuinely learns the idea."
+                        ) to "Respond in clean markdown, light and chatty: short paragraphs, one or two vivid analogies, encouraging tone."
+                    else -> (
+                        "You are Wingman acting as a university professor / research supervisor for the research subject \u201c${activeCourse.name}\u201d. Be rigorous and evidence-minded: define terms precisely, show how conclusions follow from data, mention statistics or methodology where relevant, note uncertainty honestly and suggest how to investigate further."
+                        ) to "Respond in clean markdown, professorial but readable: precise language, short mini-sections, concrete examples, professor tone."
+                    }
                 when (val res = aiClient.sendPrompt(
                     prompt = prompt,
                     systemInstruction = buildString {
-                        append("You are Wingman, a precise personal study tutor answering questions based on course material and diagrams. Subject: ${activeCourse.name}. ")
+                        append(persona)
                         if (priorThread.isNotEmpty()) {
                             append("\n\nCONVERSATION SO FAR (oldest to newest). Stay consistent with it — refer back to earlier explanations, reuse the same notation and definitions:\n")
                             priorThread.forEach { m ->
@@ -214,7 +228,8 @@ fun StudyCompanionScreen(
                     },
                     settings = settings,
                     chunks = chunks,
-                    imageBase64 = storedImg?.second
+                    imageBase64 = storedImg?.second,
+                    tone = tone
                 )) {
                     is AiResult.Success -> {
                         // Strip the [IMG: …] marker and, when the model asked for one
@@ -231,16 +246,14 @@ fun StudyCompanionScreen(
                                 sender = "Wingman",
                                 text = clean,
                                 courseId = activeCourse.id,
+                                channel = "STUDY",
                                 aiImagePaths = images.map { it.localPath }
                             )
                         )
                     }
                     is AiResult.Error -> {
-                        val err = res.message
-                        val needsKeyHint = err.contains("401") || err.contains("403") ||
-                            err.contains("API key", ignoreCase = true) || err.contains("quota", ignoreCase = true)
-                        val hint = if (needsKeyHint) " Check your API Key in Settings." else ""
-                        repository.addChatMessage(ChatMessage(sender = "Wingman", text = "Could not reach AI: $err.$hint", courseId = activeCourse.id))
+                        val err = FriendlyAiError.message(res.message)
+                        repository.addChatMessage(ChatMessage(sender = "Wingman", text = err, courseId = activeCourse.id, channel = "STUDY"))
                     }
                 }
             } finally {
@@ -255,7 +268,7 @@ fun StudyCompanionScreen(
         aiJob = null
         isAiLoading = false
         if (selectedCourseId.isNotBlank()) {
-            repository.addChatMessage(ChatMessage(sender = "Wingman", text = "Response stopped.", courseId = selectedCourseId))
+            repository.addChatMessage(ChatMessage(sender = "Wingman", text = "Response stopped.", courseId = selectedCourseId, channel = "STUDY"))
         }
     }
 
@@ -408,7 +421,7 @@ fun StudyCompanionScreen(
             confirmButton = {
                 TextButton(onClick = {
                     aiJob?.cancel()
-                    repository.clearChatHistory(selectedCourseId)
+                    repository.clearChatThread(selectedCourseId, "STUDY")
                     coursePhotoUri = null
                     chatPendingDelete = false
                 }) {
@@ -939,8 +952,8 @@ fun StudyCompanionScreen(
                                 Text(
                                     text = msg.text,
                                     color = colors.textPrimary,
-                                    fontSize = (13.5f * settings.fontScale).sp,
-                                    lineHeight = (20f * settings.fontScale).sp
+                                    fontSize = 13.5.sp,
+                                    lineHeight = 20.sp
                                 )
                             }
                             Spacer(modifier = Modifier.height(4.dp))
@@ -984,7 +997,7 @@ fun StudyCompanionScreen(
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 FioMarkdown(
                                     text = msg.text,
-                                    baseFontSize = (13.5f * settings.fontScale).sp
+                                    baseFontSize = 13.5.sp
                                 )
                                 if (msg.aiImagePaths.isNotEmpty()) {
                                     AiImageStrip(
@@ -1012,7 +1025,7 @@ fun StudyCompanionScreen(
                                             Toast.makeText(context, "Answer copied", Toast.LENGTH_SHORT).show()
                                         }
                                 )
-                                if (msg.text.startsWith("Could not reach AI")) {
+                                if (isAiFailureMessage(msg.text)) {
                                     Spacer(modifier = Modifier.width(10.dp))
                                     // Retry a failed request with the same prompt.
                                     Text(
@@ -1143,7 +1156,10 @@ fun StudyCompanionScreen(
                                     ?: "Wingman chat"
                                 val lastText = session.last().text
                                 val description = when {
-                                    lastText.startsWith("Could not reach AI") ->
+                                    lastText.startsWith("Too much traffic") ||
+                        lastText.startsWith("The AI ") ||
+                        lastText.startsWith("No internet") ||
+                        lastText.startsWith("That model") ->
                                         "AI was unreachable — tap to read the conversation."
                                     else -> lastText
                                         .lineSequence()
@@ -1320,10 +1336,10 @@ fun StudyCompanionScreen(
                                     when (val res = aiClient.sendPrompt("Generate 3 key flashcards (Q and A format)", "Create concise flashcards for spaced repetition.", settings, chunks)) {
                                         is AiResult.Success -> {
                                             repository.addFlashcard(Flashcard(courseId = selectedCourseId, front = "AI Generated: Core Thesis", back = res.data.take(180)))
-                                            repository.addChatMessage(ChatMessage(sender = "Wingman", text = "Generated Spaced Repetition Flashcards:\n${res.data}", courseId = selectedCourseId))
+                                            repository.addChatMessage(ChatMessage(sender = "Wingman", text = "Generated Spaced Repetition Flashcards:\n${res.data}", courseId = selectedCourseId, channel = "STUDY"))
                                         }
                                         is AiResult.Error -> {
-                                            repository.addChatMessage(ChatMessage(sender = "Wingman", text = "Flashcard generation error: ${res.message}", courseId = selectedCourseId))
+                                            repository.addChatMessage(ChatMessage(sender = "Wingman", text = FriendlyAiError.message(res.message), courseId = selectedCourseId, channel = "STUDY"))
                                         }
                                     }
                                     isAiLoading = false
@@ -1351,10 +1367,10 @@ fun StudyCompanionScreen(
                                     val chunks = courseDocs.flatMap { it.chunks }
                                     when (val res = aiClient.sendPrompt("Generate an executive study guide and summary.", "Synthesize clear study notes.", settings, chunks)) {
                                         is AiResult.Success -> {
-                                            repository.addChatMessage(ChatMessage(sender = "Wingman", text = "Executive Study Guide:\n${res.data}", courseId = selectedCourseId))
+                                            repository.addChatMessage(ChatMessage(sender = "Wingman", text = "Executive Study Guide:\n${res.data}", courseId = selectedCourseId, channel = "STUDY"))
                                         }
                                         is AiResult.Error -> {
-                                            repository.addChatMessage(ChatMessage(sender = "Wingman", text = "Study Guide generation error: ${res.message}", courseId = selectedCourseId))
+                                            repository.addChatMessage(ChatMessage(sender = "Wingman", text = FriendlyAiError.message(res.message), courseId = selectedCourseId, channel = "STUDY"))
                                         }
                                     }
                                     isAiLoading = false
@@ -1654,3 +1670,12 @@ fun StudyCompanionScreen(
         }
     }
 }
+
+/** True when a Wingman bubble is one of the calm provider-failure messages. */
+internal fun isAiFailureMessage(text: String): Boolean =
+    text.startsWith("Too much traffic") ||
+    text.startsWith("The AI key") ||
+    text.startsWith("The AI could not") ||
+    text.startsWith("The AI took too long") ||
+    text.startsWith("No internet") ||
+    text.startsWith("That model")

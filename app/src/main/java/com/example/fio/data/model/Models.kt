@@ -49,17 +49,50 @@ data class ScheduleEvent(
     val isCompleted: Boolean = false
 )
 
+/**
+ * One habit. mhabit-inspired but rebuilt around Fio's design language and
+ * offline JSON storage:
+ *  - `dailyGoal` lets a habit need more than one tap a day (8 glasses of water).
+ *    Partial progress lives in `progressDates` (date → count); a date only
+ *    enters `completedDates` once the goal is reached, so streak logic stays.
+ *  - `timesPerWeek` covers "3 times a week" habits (7 = daily).
+ *  - `reminderMinutes` = minutes since midnight for a daily reminder, or null.
+ *  - `question` is the easy-English question the reminder asks.
+ *  - `colorIndex` picks a dot colour from the fixed habit palette.
+ *  - `archived` habits leave the active list but stay in stats and backups.
+ */
 data class HabitItem(
     val id: String = java.util.UUID.randomUUID().toString(),
     val name: String,
     val description: String = "",
-    val frequencyDays: Int = 1, // 1 = daily
+    val frequencyDays: Int = 1, // 1 = daily (kept for old data)
+    val dailyGoal: Int = 1,
+    val progressDates: Map<String, Int> = emptyMap(),
     val streak: Int = 0,
     val bestStreak: Int = 0,
-    val completedDates: List<String> = emptyList(), // "YYYY-MM-DD"
+    val completedDates: List<String> = emptyList(),
+    val colorIndex: Int = 0,
+    val reminderMinutes: Int? = null,
+    val question: String = "",
+    val timesPerWeek: Int = 7,
+    val archived: Boolean = false,
     val loggedAtMillis: Long = currentTimestamp(),
     val lastCompletedAtMillis: Long? = null
-)
+) {
+    /** Fixed habit colour palette (matches the theme's quiet signals). */
+    fun colorValue(): Long = when (colorIndex.coerceIn(0, 9)) {
+        0 -> 0xFF34D399L // mint
+        1 -> 0xFF60A5FA  // blue
+        2 -> 0xFFF472B6  // rose
+        3 -> 0xFFFBBF24  // amber
+        4 -> 0xFFA78BFA  // violet
+        5 -> 0xFF4ADE80  // green
+        6 -> 0xFF22D3EE  // cyan
+        7 -> 0xFFFB923C  // orange
+        8 -> 0xFF94A3B8  // slate
+        else -> 0xFFE879F9 // fuchsia
+    }
+}
 
 data class GoalItem(
     val id: String = java.util.UUID.randomUUID().toString(),
@@ -314,6 +347,8 @@ data class ChatMessage(
     val sender: String, // "USER" or "WINGMAN"
     val text: String,
     val courseId: String? = null,
+    /** Which chat the message belongs to: "STUDY" (Study Companion) or "TUTOR" (Tutor). */
+    val channel: String = "STUDY",
     /** Local paths of related images fetched for AI answers (Wingman/Tutor). */
     val aiImagePaths: List<String> = emptyList(),
     val imagePath: String? = null,

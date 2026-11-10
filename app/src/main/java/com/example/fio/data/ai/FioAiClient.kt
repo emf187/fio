@@ -16,6 +16,38 @@ sealed class AiResult<out T> {
     data class Error(val message: String, val isNetworkError: Boolean = false) : AiResult<Nothing>()
 }
 
+/**
+ * Turns raw provider/network errors into one calm, easy-English message per
+ * situation. The technical detail never reaches the user interface — it only
+ * made the chat look broken when the provider was simply busy.
+ */
+object FriendlyAiError {
+    fun message(raw: String): String {
+        val rawLower = raw.lowercase()
+        val busy = rawLower.contains("429") || rawLower.contains("529") ||
+            rawLower.contains("rate limit") || rawLower.contains("quota exceeded".lowercase()) ||
+            rawLower.contains("too many request") || rawLower.contains("overload") ||
+            rawLower.contains("traffic") || rawLower.contains("high demand") ||
+            rawLower.contains("busy") || rawLower.contains("temporarily unavailable".lowercase())
+        val badKey = rawLower.contains("401") || rawLower.contains("403") ||
+            rawLower.contains("api key") || rawLower.contains("unauthorised") ||
+            rawLower.contains("unauthorized")
+        val modelProblem = rawLower.contains("404") || rawLower.contains("model") &&
+            (rawLower.contains("not found") || rawLower.contains("does not exist"))
+        val offline = rawLower.contains("offline") || rawLower.contains("unable to resolve") ||
+            rawLower.contains("unknown host") || rawLower.contains("network")
+        return when {
+            busy -> "Too much traffic on this AI model right now. Try another model in Settings, or come back in a minute."
+            badKey -> "The AI key was rejected. Check your key in Settings → AI."
+            modelProblem -> "That model name is not available on your provider. Pick another model in Settings."
+            offline -> "No internet connection. Connect to Wi-Fi or data and try again."
+            rawLower.contains("timed out") || rawLower.contains("timeout") ->
+                "The AI took too long to answer. Try again, or pick a faster model in Settings."
+            else -> "The AI could not answer right now. Try again in a little while."
+        }
+    }
+}
+
 class FioAiClient {
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
@@ -30,7 +62,8 @@ class FioAiClient {
         systemInstruction: String,
         settings: AppSettings,
         chunks: List<DocumentChunk> = emptyList(),
-        imageBase64: String? = null
+        imageBase64: String? = null,
+        tone: String = "Respond in clean markdown, concise and clear."
     ): AiResult<String> = withContext(Dispatchers.IO) {
         if (settings.aiApiKey.isBlank()) {
             return@withContext AiResult.Error("API Key is missing. Please configure your key in Settings.")
@@ -51,7 +84,7 @@ class FioAiClient {
                 }
             }
 
-            val fullSystem = "$systemInstruction\n$contextBuilder\nRespond in clean markdown, direct, academic, concise tone."
+            val fullSystem = "$systemInstruction\n$contextBuilder\n$tone"
 
             val sysMsg = JSONObject()
             sysMsg.put("role", "system")

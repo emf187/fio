@@ -353,6 +353,7 @@ fun FioTheme(
     themeName: String = "OBSIDIAN_PURPLE",
     accentColor: String = "MINT",
     reduceMotion: Boolean = false,
+    fontScale: Float = 1f,
     content: @Composable () -> Unit
 ) {
     val base = basePalette(themeName)
@@ -388,13 +389,18 @@ fun FioTheme(
         )
     }
 
-    // Fixed type ramp: host font-scale no longer breaks Fio's buttons/headings.
+    // Fixed type ramp: the host's own font-scale no longer breaks Fio's
+    // buttons/headings — but the in-app Text size setting multiplies on top of
+    // the device default so it actually changes every screen.
     val platformDensity = LocalDensity.current
 
     CompositionLocalProvider(
         LocalFioColors provides themedColors,
         LocalReduceMotion provides reduceMotion,
-        LocalDensity provides Density(platformDensity.density, fontScale = 1f)
+        LocalDensity provides Density(
+            density = platformDensity.density,
+            fontScale = (platformDensity.fontScale * fontScale.coerceIn(0.8f, 1.4f))
+        )
     ) {
         MaterialTheme(
             colorScheme = colorScheme,

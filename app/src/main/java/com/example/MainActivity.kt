@@ -25,6 +25,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.fio.data.ai.FioAiClient
 import com.example.fio.data.storage.FioRepository
+import com.example.fio.focus.FocusTimer
+import com.example.fio.focus.FocusTimerService
 import com.example.fio.ui.components.FioScreen
 import com.example.fio.ui.components.FioSidebarDrawer
 import com.example.fio.ui.components.FioTopBar
@@ -42,6 +44,14 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         repository = FioRepository(applicationContext)
+        // Finished focus sessions land straight in the study logs; the
+        // service wires itself up through the singleton controller.
+        FocusTimer.sessionLogger = { log -> repository.logFocusSession(log) }
+        FocusTimer.serviceStarter = { FocusTimerService.start(it) }
+        FocusTimer.serviceStopper = { FocusTimerService.stop(it) }
+        // Any reminder mirror drift (e.g. events imported without a device clone)
+        // gets re-armed on every app start.
+        runCatching { com.example.fio.alarms.FioReminderAlarms.rescheduleAll(applicationContext) }
 
         setContent {
             val settings by repository.settings.collectAsState()
@@ -49,7 +59,8 @@ class MainActivity : ComponentActivity() {
             FioTheme(
                 themeName = settings.theme,
                 accentColor = settings.accentColor,
-                reduceMotion = settings.reduceMotion
+                reduceMotion = settings.reduceMotion,
+                fontScale = settings.fontScale
             ) {
                 FioAppContent(
                     repository = repository,

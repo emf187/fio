@@ -282,11 +282,33 @@ class FioRepository(private val context: Context) {
             (ratio * 100).roundToInt()
         } else 0
 
-        // 4. Habits Score (0-100)
-        val totalHabits = _habits.value.size
-        val habitScore = if (totalHabits > 0) {
-            val completedHabits = _habits.value.count { it.completedDates.isNotEmpty() }
-            ((completedHabits.toDouble() / totalHabits) * 100).roundToInt()
+        // 4. Habits Score (0-100) — one aggregate of everything in the habit
+        //    tracker: how far today is done, the 7-day success rate and how
+        //    strong the active streaks are. Averaged across active habits.
+        val activeHabits = _habits.value.filter { !it.archived }
+        val habitScore = if (activeHabits.isNotEmpty()) {
+            val today = todayDateString()
+            val perHabit = activeHabits.map { h ->
+                val goal = h.dailyGoal.coerceAtLeast(1)
+                val todayPart = ((h.progressDates[today] ?: 0).toDouble() / goal).coerceIn(0.0, 1.0)
+                // 7-day success rate: completed days vs days that should be done.
+                val interval = if (h.timesPerWeek >= 7) 1 else (7 / h.timesPerWeek.coerceIn(1, 7)).coerceAtLeast(1)
+                var doneDays = 0
+                var dueDays = 0
+                var cursor = java.time.LocalDate.now()
+                repeat(7) { dayIndex ->
+                    val due = dayIndex % interval == 0
+                    if (h.completedDates.contains(cursor.toString())) {
+                        doneDays++
+                        if (due) dueDays++
+                    } else if (due) dueDays++
+                    cursor = cursor.minusDays(1)
+                }
+                val weekRate = if (dueDays > 0) doneDays.toDouble() / dueDays else 0.0
+                val streakPart = (h.streak.coerceAtLeast(0).coerceAtMost(14)).toDouble() / 14.0
+                ((0.5 * todayPart) + (0.35 * weekRate) + (0.15 * streakPart)).coerceIn(0.0, 1.0)
+            }
+            (perHabit.average() * 100).roundToInt()
         } else 0
 
         // 5. Activity & Rest Score (0-100)
@@ -418,6 +440,12 @@ class FioRepository(private val context: Context) {
         saveAll()
     }
 
+    /** Deletes one chat channel's thread for a subject (Study Companion / Tutor keep separate histories). */
+    fun clearChatThread(courseId: String, channel: String) {
+        _chatHistory.value = _chatHistory.value.filterNot { it.courseId == courseId && it.channel == channel }
+        saveAll()
+    }
+
     /** Deletes an explicit set of chat messages (long-press on a history session). */
     fun deleteChatMessages(ids: Collection<String>) {
         val toRemove = ids.toSet()
@@ -496,12 +524,16 @@ class FioRepository(private val context: Context) {
     fun addEvent(event: ScheduleEvent) {
         _events.value = _events.value + event
         saveAll()
+        mirrorReminderData()
+        com.example.fio.alarms.FioReminderAlarms.scheduleEvent(context, event)
     }
 
     fun updateEvent(event: ScheduleEvent) {
         val updated = event.copy(editedAtMillis = currentTimestamp())
         _events.value = _events.value.map { if (it.id == event.id) updated else it }
         saveAll()
+        mirrorReminderData()
+        com.example.fio.alarms.FioReminderAlarms.scheduleEvent(context, updated)
     }
 
     fun toggleEventCompleted(id: String) {
@@ -514,35 +546,146 @@ class FioRepository(private val context: Context) {
     fun removeEvent(id: String) {
         _events.value = _events.value.filterNot { it.id == id }
         saveAll()
+        mirrorReminderData()
+        com.example.fio.alarms.FioReminderAlarms.cancelEvent(context, id)
     }
 
     // --- Habits Operations ---
+    /**
+     * One tap on a habit row.
+     *  - goal = 1: completes / uncompletes the day.
+     *  - goal > 1: counts up the day's progress; reaching the goal marks the
+     *    day complete and grows the streak; the next tap undoes one count.
+     */
     fun toggleHabitToday(id: String) {
-        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+        val today = todayDateString()
         _habits.value = _habits.value.map { habit ->
-            if (habit.id == id) {
-                val isCompletedToday = habit.completedDates.contains(todayStr)
-                val newDates = if (isCompletedToday) {
-                    habit.completedDates - todayStr
+            if (habit.id != id) habit
+            else {
+                val goal = habit.dailyGoal.coerceAtLeast(1)
+                val count = habit.progressDates[today] ?: if (habit.completedDates.contains(today)) goal else 0
+                val (newCount, stillDoneBefore) = if (count >= goal) {
+                    goal - 1 to true
                 } else {
-                    habit.completedDates + todayStr
+                    count + 1 to habit.completedDates.contains(today)
                 }
-                val newStreak = if (isCompletedToday) (habit.streak - 1).coerceAtLeast(0) else habit.streak + 1
+                val willBeDone = newCount >= goal
+                var newDates = habit.progressDates
+                if (newCount <= 0) {
+                    newDates = newDates - today
+                } else {
+                    newDates = newDates + (today to newCount)
+                }
+                val newCompleted =
+                    if (willBeDone && !stillDoneBefore) habit.completedDates + today
+                    else if (!willBeDone) habit.completedDates - today
+                    else habit.completedDates
+                // Streak = consecutive completed days ending today or yesterday.
+                val (streak, best) = recomputeStreaks(newCompleted, habit.bestStreak)
                 habit.copy(
-                    completedDates = newDates,
-                    streak = newStreak,
-                    bestStreak = maxOf(habit.bestStreak, newStreak),
-                    lastCompletedAtMillis = if (!isCompletedToday) currentTimestamp() else habit.lastCompletedAtMillis
+                    progressDates = newDates,
+                    completedDates = newCompleted,
+                    streak = streak,
+                    bestStreak = best,
+                    lastCompletedAtMillis = if (willBeDone && !stillDoneBefore) currentTimestamp()
+                        else habit.lastCompletedAtMillis
                 )
-            } else habit
+            }
         }
         saveAll()
     }
 
-    fun addHabit(name: String, description: String = "") {
-        val habit = HabitItem(name = name, description = description)
-        _habits.value = _habits.value + habit
+    private fun recomputeStreaks(completed: List<String>, previousBest: Int): Pair<Int, Int> {
+        var streak = 0
+        runCatching {
+            var cursor = java.time.LocalDate.now()
+            // Allow the streak to start today or yesterday so it survives until today is done.
+            if (!dateStringsContain(completed, cursor.toString())) cursor = cursor.minusDays(1)
+            while (dateStringsContain(completed, cursor.toString())) {
+                streak++
+                cursor = cursor.minusDays(1)
+            }
+        }
+        return streak to maxOf(previousBest, streak)
+    }
+
+    private fun dateStringsContain(dates: List<String>, target: String): Boolean {
+        for (d in dates) if (d == target) return true
+        return false
+    }
+
+    internal fun todayDateString(): String =
+        java.time.LocalDate.now().toString()
+
+    fun addHabit(item: HabitItem) {
+        _habits.value = _habits.value + item
         saveAll()
+        mirrorReminderData()
+    }
+
+    fun updateHabit(item: HabitItem) {
+        _habits.value = _habits.value.map { if (it.id == item.id) item else it }
+        saveAll()
+        mirrorReminderData()
+        if (item.reminderMinutes == null || item.archived) {
+            com.example.fio.alarms.FioReminderAlarms.cancelHabit(context, item.id)
+        } else {
+            com.example.fio.alarms.FioReminderAlarms.scheduleHabit(
+                context, item.id, item.name,
+                item.question.ifBlank { "Time for: ${item.name}" },
+                item.reminderMinutes!!, item.timesPerWeek
+            )
+        }
+    }
+
+    fun deleteHabit(id: String) {
+        _habits.value = _habits.value.filterNot { it.id == id }
+        saveAll()
+        mirrorReminderData()
+        com.example.fio.alarms.FioReminderAlarms.cancelHabit(context, id)
+    }
+
+    /**
+     * Snapshot for the boot receiver: which habit reminders exist and when the
+     * next event starts. Plain JSON in prefs, so re-arming alarms after a
+     * reboot needs no repository access. Also called whenever habits or
+     * calendar events change.
+     */
+    fun mirrorReminderData() {
+        try {
+            val habitJson = org.json.JSONArray()
+            _habits.value
+                .filter { !it.archived && it.reminderMinutes != null }
+                .forEach { h ->
+                    habitJson.put(
+                        JSONObject()
+                            .put("id", h.id)
+                            .put("name", h.name)
+                            .put("question", h.question.ifBlank { h.name })
+                            .put("reminderMinutes", h.reminderMinutes ?: 0)
+                            .put("timesPerWeek", h.timesPerWeek)
+                    )
+                }
+            val eventJson = org.json.JSONArray()
+            _events.value
+                .filter { it.startTimeMillis > System.currentTimeMillis() }
+                .sortedBy { it.startTimeMillis }
+                .take(40)
+                .forEach { e ->
+                    eventJson.put(
+                        JSONObject()
+                            .put("id", e.id)
+                            .put("title", e.title)
+                            .put("start", e.startTimeMillis)
+                            .put("end", e.endTimeMillis)
+                    )
+                }
+            val prefs = context.getSharedPreferences("fio_reminder_mirror", Context.MODE_PRIVATE)
+            prefs.edit()
+                .putString("habits_json", habitJson.toString())
+                .putString("events_json", eventJson.toString())
+                .apply()
+        } catch (_: Exception) { }
     }
 
     // --- Goals Operations ---
@@ -879,16 +1022,28 @@ class FioRepository(private val context: Context) {
             obj.put("name", h.name)
             obj.put("description", h.description)
             obj.put("frequencyDays", h.frequencyDays)
+            obj.put("dailyGoal", h.dailyGoal)
             obj.put("streak", h.streak)
             obj.put("bestStreak", h.bestStreak)
             val completedDatesArray = JSONArray()
             h.completedDates.forEach { completedDatesArray.put(it) }
             obj.put("completedDates", completedDatesArray)
+            val progressObj = JSONObject()
+            h.progressDates.forEach { (d, v) -> progressObj.put(d, v) }
+            obj.put("progressDates", progressObj)
+            obj.put("colorIndex", h.colorIndex)
+            obj.put("reminderMinutes", h.reminderMinutes ?: -1)
+            obj.put("question", h.question)
+            obj.put("timesPerWeek", h.timesPerWeek)
+            obj.put("archived", h.archived)
             obj.put("loggedAtMillis", h.loggedAtMillis)
             obj.put("lastCompletedAtMillis", h.lastCompletedAtMillis ?: -1L)
             habitsArray.put(obj)
         }
         root.put("habits", habitsArray)
+        // Mirror the reminder data so the boot receiver can re-arm alarms
+        // without touching this repository.
+        mirrorReminderData()
 
         // 3. Export goals & progress
         val goalsArray = JSONArray()
@@ -1062,6 +1217,7 @@ class FioRepository(private val context: Context) {
             obj.put("sender", c.sender)
             obj.put("text", c.text)
             obj.put("courseId", c.courseId ?: "")
+            obj.put("channel", c.channel)
             obj.put("imagePath", c.imagePath ?: "")
             val aiImgArray = JSONArray()
             c.aiImagePaths.forEach { aiImgArray.put(it) }
@@ -1259,15 +1415,31 @@ class FioRepository(private val context: Context) {
                             datesList.add(dArr.getString(dIdx))
                         }
                     }
+                    val progressMap = mutableMapOf<String, Int>()
+                    if (obj.has("progressDates")) {
+                        val pObj = obj.getJSONObject("progressDates")
+                        val keys = pObj.keys()
+                        while (keys.hasNext()) {
+                            val key = keys.next()
+                            progressMap[key] = pObj.optInt(key, 0)
+                        }
+                    }
                     list.add(
                         HabitItem(
                             id = obj.optString("id", UUID.randomUUID().toString()),
                             name = obj.getString("name"),
                             description = obj.optString("description", ""),
                             frequencyDays = obj.optInt("frequencyDays", 1),
+                            dailyGoal = obj.optInt("dailyGoal", 1).coerceAtLeast(1),
+                            progressDates = progressMap,
                             streak = obj.optInt("streak", 0),
                             bestStreak = obj.optInt("bestStreak", 0),
                             completedDates = datesList,
+                            colorIndex = obj.optInt("colorIndex", 0),
+                            reminderMinutes = obj.optInt("reminderMinutes", -1).takeIf { it >= 0 },
+                            question = obj.optString("question", ""),
+                            timesPerWeek = obj.optInt("timesPerWeek", 7).coerceIn(1, 7),
+                            archived = obj.optBoolean("archived", false),
                             loggedAtMillis = obj.optLong("loggedAtMillis", currentTimestamp()),
                             lastCompletedAtMillis = if (obj.has("lastCompletedAtMillis") && obj.getLong("lastCompletedAtMillis") > 0) obj.getLong("lastCompletedAtMillis") else null
                         )
@@ -1277,9 +1449,15 @@ class FioRepository(private val context: Context) {
                     if (merge) mergeRecords(_habits.value, list, { it.id }, { cur, inc ->
                         // Fresher record wins, completed check-dates are unioned.
                         val base = if (inc.loggedAtMillis > cur.loggedAtMillis) inc else cur
-                        base.copy(completedDates = (cur.completedDates + inc.completedDates).distinct())
+                        val other = if (inc.loggedAtMillis > cur.loggedAtMillis) cur else inc
+                        base.copy(
+                            completedDates = (cur.completedDates + inc.completedDates).distinct(),
+                            progressDates = cur.progressDates + other.progressDates,
+                            archived = cur.archived && inc.archived
+                        )
                     })
                     else list
+                mirrorReminderData()
             }
 
             // Goals
@@ -1590,6 +1768,7 @@ class FioRepository(private val context: Context) {
                             sender = obj.getString("sender"),
                             text = obj.getString("text"),
                             courseId = obj.optString("courseId", "").ifEmpty { null },
+                            channel = obj.optString("channel", "STUDY"),
                             imagePath = obj.optString("imagePath", "").ifEmpty { null },
                             aiImagePaths = run {
                                 val result = mutableListOf<String>()

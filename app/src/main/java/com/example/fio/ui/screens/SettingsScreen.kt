@@ -1,8 +1,13 @@
 ﻿package com.example.fio.ui.screens
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -31,6 +36,7 @@ import com.example.BuildConfig
 import com.example.fio.data.model.AppSettings
 import com.example.fio.data.storage.FioRepository
 import com.example.fio.data.transfer.FIO_TRANSFER_PORT
+import com.example.fio.data.transfer.FioBundle
 import com.example.fio.data.transfer.FioTransferClient
 import com.example.fio.data.transfer.FioWifi
 import com.example.fio.data.transfer.TransferServer
@@ -48,6 +54,7 @@ import com.example.fio.ui.theme.themePreview
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
 @Composable
 fun SettingsScreen(repository: FioRepository) {
@@ -196,6 +203,85 @@ fun SettingsScreen(repository: FioRepository) {
         )
     }
 
+    // --- Full zip backup (Google Drive / Files / anywhere via the system picker) ---
+    val coroutineScope = rememberCoroutineScope()
+    var zipBusy by remember { mutableStateOf(false) }
+
+    val zipCreateLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/zip")
+    ) { uri ->
+        if (uri != null) {
+            zipBusy = true
+            coroutineScope.launch {
+                val outcome = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val temp = File(context.cacheDir, "fio_backup_${System.currentTimeMillis()}.zip")
+                        val summary = FioBundle.build(context, repository, temp)
+                        context.contentResolver.openOutputStream(uri)?.use { out ->
+                            temp.inputStream().use { it.copyTo(out) }
+                        } ?: error("Could not write to the selected location")
+                        temp.delete()
+                        summary
+                    }
+                }
+                zipBusy = false
+                outcome.fold(
+                    onSuccess = { s ->
+                        Toast.makeText(context, "Backup saved — ${s.line()}", Toast.LENGTH_LONG).show()
+                    },
+                    onFailure = { e ->
+                        Toast.makeText(context, "Backup failed: ${e.message ?: "unknown error"}", Toast.LENGTH_LONG).show()
+                    }
+                )
+            }
+        }
+    }
+
+    val zipOpenLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            zipBusy = true
+            coroutineScope.launch {
+                val outcome = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val temp = File(context.cacheDir, "fio_restore_${System.currentTimeMillis()}.zip")
+                        context.contentResolver.openInputStream(uri)?.use { input ->
+                            temp.outputStream().use { input.copyTo(it) }
+                        } ?: error("Could not read the selected file")
+                        val summary = FioBundle.restore(context, repository, temp, merge = true)
+                        temp.delete()
+                        summary
+                    }
+                }
+                zipBusy = false
+                outcome.fold(
+                    onSuccess = { s ->
+                        Toast.makeText(context, "Restored — ${s.line()}", Toast.LENGTH_LONG).show()
+                    },
+                    onFailure = { e ->
+                        Toast.makeText(context, "Restore failed: ${e.message ?: "not a Fio backup zip"}", Toast.LENGTH_LONG).show()
+                    }
+                )
+            }
+        }
+    }
+
+    // --- Notifications permission ---
+    val notifPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        Toast.makeText(
+            context,
+            if (granted) "Notifications are on — reminders will show up."
+            else "No problem — you can turn them on here anytime.",
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+    val notificationsAllowed = if (Build.VERSION.SDK_INT >= 33) {
+        context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+    } else true
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -210,6 +296,47 @@ fun SettingsScreen(repository: FioRepository) {
                 title = "Settings",
                 subtitle = "Make it yours. Everything stays on this device."
             )
+        }
+
+        // --- 1a. Notifications ---
+        item {
+            FioCard(
+                backgroundColor = colors.surface,
+                borderColor = colors.border,
+                padding = PaddingValues(18.dp)
+            ) {
+                Text("Notifications", style = FioType.section, color = colors.textPrimary)
+                Spacer(modifier = Modifier.height(3.dp))
+                Text(
+                    "Let Fio speak up in your notification tab: timetable period alarms, calendar events, habit reminders and the focus timer.",
+                    style = FioType.small,
+                    color = colors.textMuted
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                FioRow(
+                    title = if (notificationsAllowed) "Notifications are on" else "Turn on notifications",
+                    subtitle = if (notificationsAllowed)
+                        "Timetable, calendar, habits and the focus timer can all reach you."
+                    else
+                        "Allow Fio to post reminders to your notification tab.",
+                    trailing = {
+                        Switch(
+                            checked = notificationsAllowed,
+                            onCheckedChange = {
+                                if (Build.VERSION.SDK_INT >= 33) {
+                                    notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                } else {
+                                    Toast.makeText(context, "Notifications are already allowed on this Android version", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = colors.primary
+                            )
+                        )
+                    }
+                )
+            }
         }
 
         // --- 1b. Your name ---
@@ -706,6 +833,39 @@ fun SettingsScreen(repository: FioRepository) {
                 Text(
                     "Your data stays on this phone. Save a text copy, or restore one you made earlier.",
                     style = FioType.small,
+                    color = colors.textMuted
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // FULL zip backup — every feature of the app in one file, saved
+                // wherever the system picker points (Google Drive, Files, USB…).
+                FioPrimaryButton(
+                    text = "Full backup (zip)",
+                    icon = Icons.Default.Backup,
+                    loading = zipBusy,
+                    onClick = {
+                        if (!zipBusy) {
+                            zipCreateLauncher.launch("Fio-backup.zip")
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().testTag("zip_backup_button")
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                FioSecondaryButton(
+                    text = "Restore from backup",
+                    icon = Icons.Default.CloudDownload,
+                    loading = zipBusy,
+                    onClick = {
+                        if (!zipBusy) {
+                            zipOpenLauncher.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream"))
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().testTag("zip_restore_button")
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    "The zip contains everything: courses, books, notes, chats, habits, calendar, timer logs and your AI key. Restoring merges, so nothing newer is lost.",
+                    style = FioType.caption,
                     color = colors.textMuted
                 )
                 Spacer(modifier = Modifier.height(12.dp))

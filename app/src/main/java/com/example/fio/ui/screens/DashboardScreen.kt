@@ -120,7 +120,7 @@ fun DashboardScreen(
             "ADD_HABIT" -> {
                 val name = action.payload["habitName"] ?: "New Habit"
                 val desc = action.payload["description"] ?: ""
-                repository.addHabit(name, desc)
+                repository.addHabit(HabitItem(name = name, description = desc))
                 Toast.makeText(context, "Created new habit: $name", Toast.LENGTH_SHORT).show()
             }
             "CREATE_NOTE" -> {
@@ -547,16 +547,18 @@ fun DashboardScreen(
         }
 
         // --- 5. Habits ---
-        if (habits.isNotEmpty()) {
+        if (habits.any { !it.archived }) {
             item {
                 com.example.fio.ui.components.FioSectionHeader(
                     title = "Habits",
                     actionLabel = "All",
-                    onAction = { onNavigate(FioScreen.STATS) }
+                    onAction = { onNavigate(FioScreen.HEALTH) }
                 )
             }
-            items(habits.take(4), key = { it.id }) { habit ->
-                val todayStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
+            items(habits.filter { !it.archived }.take(4), key = { it.id }) { habit ->
+                val todayStr = repository.todayDateString()
+                val goal = habit.dailyGoal.coerceAtLeast(1)
+                val todayCount = habit.progressDates[todayStr] ?: if (habit.completedDates.contains(todayStr)) goal else 0
                 val isCompleted = habit.completedDates.contains(todayStr)
 
                 FioCard(
@@ -576,20 +578,33 @@ fun DashboardScreen(
                             modifier = Modifier
                                 .size(24.dp)
                                 .clip(CircleShape)
-                                .background(if (isCompleted) colors.accent else Color.Transparent)
-                                .border(1.5.dp, if (isCompleted) colors.accent else colors.border, CircleShape),
+                                .background(
+                                    if (isCompleted) colors.accent
+                                    else if (goal > 1 && todayCount > 0) colors.accent.copy(alpha = 0.18f)
+                                    else Color.Transparent
+                                )
+                                .border(1.5.dp, if (isCompleted || (goal > 1 && todayCount > 0)) colors.accent else colors.border, CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
                             if (isCompleted) {
                                 Icon(imageVector = Icons.Default.Check, contentDescription = null, tint = colors.background, modifier = Modifier.size(15.dp))
+                            } else if (goal > 1 && todayCount > 0) {
+                                Text("$todayCount", color = colors.textPrimary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(text = habit.name, color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            if (goal > 1) {
+                                Text(
+                                    text = "$todayCount / $goal today",
+                                    color = if (isCompleted) colors.success else colors.textMuted,
+                                    fontSize = 10.sp
+                                )
+                            }
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(imageVector = Icons.Default.LocalFireDepartment, contentDescription = null, tint = colors.warning, modifier = Modifier.size(15.dp))
+                            Icon(imageVector = Icons.Default.LocalFireDepartment, contentDescription = null, tint = if (habit.streak > 0) colors.warning else colors.textMuted, modifier = Modifier.size(15.dp))
                             Text(text = "${habit.streak}d", color = colors.warning, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
