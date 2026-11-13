@@ -66,6 +66,13 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
+/**
+ * ChatGPT-style chat window boundary: opening the app fresh (process start)
+ * begins a new chat, and the "New chat" button resets it. The boundary survives
+ * in-app navigation; everything older stays reachable in the History tab.
+ */
+private var studyChatWindowStart by mutableStateOf(System.currentTimeMillis())
+
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun StudyCompanionScreen(
@@ -99,10 +106,13 @@ fun StudyCompanionScreen(
     val courseDocs = documents.filter { it.courseId == selectedCourseId }
     val courseFlashcards = flashcards.filter { it.courseId == selectedCourseId }
     val courseChatMessages = chatHistory.filter { it.courseId == selectedCourseId && it.channel == "STUDY" }
+    // Messages in the current chat window: a fresh app start (or "New chat")
+    // begins a new window; older conversations stay in the History tab.
+    val studyWindowMessages = courseChatMessages.filter { it.timestampMillis >= studyChatWindowStart }
 
     // Claude-style conversation title: the chat is named after its first
     // question, so each subject session reads like a titled conversation.
-    val chatTitle = courseChatMessages.firstOrNull { it.sender == "You" }
+    val chatTitle = studyWindowMessages.firstOrNull { it.sender == "You" }
         ?.text?.trim()?.lineSequence()?.firstOrNull()?.trim()?.take(44)
         ?.ifBlank { null } ?: "New Chat"
 
@@ -184,11 +194,10 @@ fun StudyCompanionScreen(
     fun launchStudyQuery(prompt: String, photoUri: Uri?) {
         val activeCourse = currentCourse ?: return
         if (prompt.isBlank() || isAiLoading) return
-        // Per-chat memory: snapshot the thread BEFORE adding this prompt, then
-        // feed it to the model so it has the same conversation visible on
-        // screen (continuity across turns, per subject chat window).
+        // Per-chat memory: the conversation visible in the current chat window
+        // (a new chat starts with clean context).
         val priorThread = chatHistory
-            .filter { it.courseId == activeCourse.id && it.channel == "STUDY" }
+            .filter { it.courseId == activeCourse.id && it.channel == "STUDY" && it.timestampMillis >= studyChatWindowStart }
             .takeLast(10)
         isAiLoading = true
         repository.addChatMessage(ChatMessage(sender = "You", text = prompt, courseId = activeCourse.id, channel = "STUDY"))
@@ -860,6 +869,15 @@ fun StudyCompanionScreen(
                         modifier = Modifier.weight(1f).testTag("chat_title")
                     )
                     // History: now lives in the History tab inside the chat.
+                    TextButton(
+                        onClick = { studyChatWindowStart = System.currentTimeMillis(); chatTab = 0 },
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                        modifier = Modifier.testTag("new_chat_button")
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, tint = colors.primary, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text("New chat", color = colors.primary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    }
                     if (courseChatMessages.isNotEmpty()) {
                         TextButton(
                             onClick = { chatPendingDelete = true },
@@ -1034,7 +1052,7 @@ fun StudyCompanionScreen(
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.SemiBold,
                                         modifier = Modifier.clickable {
-                                            val failedPrompt = courseChatMessages.lastOrNull { it.sender == "You" }?.text
+                                            val failedPrompt = studyWindowMessages.lastOrNull { it.sender == "You" }?.text
                                             if (failedPrompt != null) {
                                                 repository.deleteChatMessagesFrom(msg.id)
                                                 launchStudyQuery(failedPrompt, null)
@@ -1048,11 +1066,11 @@ fun StudyCompanionScreen(
                 }
 
                 if (chatTab == 0) {
-                    // --- Chat tab: the full conversation, ChatGPT-style ---
+                    // --- Chat tab: the current chat window, ChatGPT-style ---
                     val chatScroll = rememberScrollState()
-                    LaunchedEffect(chatTab, courseChatMessages.size, courseChatMessages.lastOrNull()?.id) {
+                    LaunchedEffect(chatTab, studyWindowMessages.size, studyWindowMessages.lastOrNull()?.id) {
                         withFrameNanos { }
-                        if (courseChatMessages.isNotEmpty()) {
+                        if (studyWindowMessages.isNotEmpty()) {
                             runCatching { chatScroll.animateScrollTo(chatScroll.maxValue) }
                         }
                     }
@@ -1061,23 +1079,23 @@ fun StudyCompanionScreen(
                             .fillMaxWidth()
                             .heightIn(max = (LocalConfiguration.current.screenHeightDp * 0.56f).dp)
                     ) {
-                        if (courseChatMessages.isNotEmpty()) {
+                        if (studyWindowMessages.isNotEmpty()) {
                             Column(
                                 modifier = Modifier.fillMaxWidth().verticalScroll(chatScroll).padding(top = 10.dp, bottom = 2.dp),
                                 verticalArrangement = Arrangement.spacedBy(16.dp)
                             ) {
-                                courseChatMessages.forEach { chatBubble(it) }
+                                studyWindowMessages.forEach { chatBubble(it) }
                             }
                         } else {
                             Text(
-                                "Ask your first question to start the chat.",
+                                "New chat — ask your first question.",
                                 color = colors.textMuted,
                                 fontSize = 12.sp,
                                 modifier = Modifier.padding(top = 12.dp)
                             )
                         }
                         // Jump-to-latest pill (ChatGPT-style ↓).
-                        if (courseChatMessages.isNotEmpty() && chatScroll.canScrollForward) {
+                        if (studyWindowMessages.isNotEmpty() && chatScroll.canScrollForward) {
                             Box(
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)

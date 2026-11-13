@@ -64,6 +64,13 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
+/**
+ * ChatGPT-style chat window boundary: opening the app fresh (process start)
+ * begins a new chat, and the "New chat" button resets it. The boundary survives
+ * in-app navigation; everything older stays reachable in the History tab.
+ */
+private var tutorChatWindowStart by mutableStateOf(System.currentTimeMillis())
+
 @Composable
 fun TutorScreen(
     repository: FioRepository,
@@ -122,6 +129,9 @@ fun TutorScreen(
 
     // --- Tutor Chat state (mirrors the Study Companion chat) ---
     val tutorMessages = chatHistory.filter { it.courseId == selectedCourseId && it.channel == "TUTOR" }
+    // Messages in the current chat window: a fresh app start (or "New chat")
+    // begins a new window; older conversations stay in the History tab.
+    val tutorWindowMessages = tutorMessages.filter { it.timestampMillis >= tutorChatWindowStart }
     var chatTab by remember { mutableStateOf(0) } // 0 = live chat, 1 = history
     var tutorQuery by remember { mutableStateOf("") }
     var tutorChatPhotoUri by remember { mutableStateOf<Uri?>(null) }
@@ -162,10 +172,9 @@ fun TutorScreen(
             try {
                 val storedImg = if (photoUri != null) ImageStorage.processAndStoreImage(context, photoUri) else null
                 val chunks = courseDocs.flatMap { it.chunks }
-                // Per-chat memory: the same conversation the student sees on screen.
-                val priorThread = tutorMessages
-                    .filter { it.courseId == selectedCourseId && it.channel == "TUTOR" }
-                    .takeLast(10)
+                // Per-chat memory: the conversation visible in the current chat
+                // window (a new chat starts with clean context).
+                val priorThread = tutorWindowMessages.takeLast(10)
                 when (val res = aiClient.sendPrompt(
                     prompt = prompt,
                     systemInstruction = buildString {
@@ -823,24 +832,38 @@ Evaluate this answer. Return ONLY a valid JSON object without markdown fences, w
                     borderColor = colors.border,
                     padding = PaddingValues(14.dp)
                 ) {
-                    // Card title row + clear-current-chat action
+                    // Card title row: chat identity + always-available New chat / Clear
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                             Icon(imageVector = Icons.Default.Chat, contentDescription = null, tint = colors.primary, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                "Tutor Chat · ${currentCourse?.name ?: "Choose a subject"}",
+                                "Tutor Chat",
                                 color = colors.textPrimary,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp,
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                letterSpacing = (-0.2).sp,
                                 maxLines = 1,
                                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f, fill = false)
+                                modifier = Modifier.testTag("tutor_chat_title")
                             )
+                        }
+                        TextButton(
+                            onClick = {
+                                haptics.tick()
+                                tutorChatWindowStart = System.currentTimeMillis()
+                                chatTab = 0
+                            },
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                            modifier = Modifier.testTag("tutor_new_chat_button")
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, tint = colors.primary, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text("New chat", color = colors.primary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                         }
                         if (tutorMessages.isNotEmpty()) {
                             TextButton(
@@ -851,6 +874,14 @@ Evaluate this answer. Return ONLY a valid JSON object without markdown fences, w
                             }
                         }
                     }
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "Tutor · ${currentCourse?.name ?: "No subject selected"}",
+                        color = colors.textMuted,
+                        fontSize = 11.5.sp,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
 
                     if (currentCourse == null) {
                         Spacer(modifier = Modifier.height(8.dp))
@@ -865,7 +896,7 @@ Evaluate this answer. Return ONLY a valid JSON object without markdown fences, w
                                 .background(colors.surfaceElevated)
                                 .testTag("tutor_chat_tabs")
                                 .padding(3.dp),
-                            horizontalArrangement = Arrangement.SpaceEvenly
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
                         ) {
                             listOf(
                                 "Chat" to 0,
@@ -994,7 +1025,7 @@ Evaluate this answer. Return ONLY a valid JSON object without markdown fences, w
                                                 fontSize = 10.sp,
                                                 fontWeight = FontWeight.SemiBold,
                                                 modifier = Modifier.clickable {
-                                                    val failedPrompt = tutorMessages.lastOrNull { it.sender == "You" }?.text
+                                                    val failedPrompt = tutorWindowMessages.lastOrNull { it.sender == "You" }?.text
                                                     if (failedPrompt != null) {
                                                         repository.deleteChatMessagesFrom(msg.id)
                                                         launchTutorChat(failedPrompt, null)
@@ -1008,11 +1039,11 @@ Evaluate this answer. Return ONLY a valid JSON object without markdown fences, w
                         }
 
                         if (chatTab == 0) {
-                            // --- Chat tab: the full conversation ---
+                            // --- Chat tab: the current chat window ---
                             val chatScroll = rememberScrollState()
-                            LaunchedEffect(chatTab, tutorMessages.size, tutorMessages.lastOrNull()?.id) {
+                            LaunchedEffect(chatTab, tutorWindowMessages.size, tutorWindowMessages.lastOrNull()?.id) {
                                 withFrameNanos { }
-                                if (tutorMessages.isNotEmpty()) {
+                                if (tutorWindowMessages.isNotEmpty()) {
                                     runCatching { chatScroll.animateScrollTo(chatScroll.maxValue) }
                                 }
                             }
@@ -1025,21 +1056,21 @@ Evaluate this answer. Return ONLY a valid JSON object without markdown fences, w
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .verticalScroll(chatScroll)
-                                        .padding(vertical = 4.dp),
+                                        .padding(top = 10.dp, bottom = 4.dp),
                                     verticalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
-                                    if (tutorMessages.isEmpty()) {
+                                    if (tutorWindowMessages.isEmpty()) {
                                         Text(
-                                            "Ask your tutor anything about this subject — it remembers the conversation.",
+                                            "New chat — ask your tutor anything about this subject.",
                                             color = colors.textMuted,
                                             fontSize = 12.sp,
                                             modifier = Modifier.padding(top = 12.dp)
                                         )
                                     }
-                                    tutorMessages.forEach { msg -> tutorBubble(msg) }
+                                    tutorWindowMessages.forEach { msg -> tutorBubble(msg) }
                                 }
                                 // Jump-to-latest pill (ChatGPT-style ↓).
-                                if (tutorMessages.isNotEmpty() && chatScroll.canScrollForward) {
+                                if (tutorWindowMessages.isNotEmpty() && chatScroll.canScrollForward) {
                                     Box(
                                         modifier = Modifier
                                             .align(Alignment.BottomCenter)
@@ -1088,7 +1119,7 @@ Evaluate this answer. Return ONLY a valid JSON object without markdown fences, w
                                     }
                                     var expandedSession by remember { mutableStateOf<String?>(null) }
                                     Column(
-                                        modifier = Modifier.fillMaxWidth().verticalScroll(historyScroll),
+                                        modifier = Modifier.fillMaxWidth().verticalScroll(historyScroll).padding(top = 6.dp, bottom = 2.dp),
                                         verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
                                         sessions.forEach { session ->
