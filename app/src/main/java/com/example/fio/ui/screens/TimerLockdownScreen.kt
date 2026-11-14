@@ -193,8 +193,12 @@ fun TimerLockdownScreen(repository: FioRepository) {
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Circular Countdown Display (wall-clock based, always accurate)
-                    val now = System.currentTimeMillis()
+                    // Circular Countdown Display (wall-clock based, always accurate).
+                    // The pulse keys are read here, inside this item's scope, so the
+                    // clock re-evaluates every second even when FocusTimer's state
+                    // value is unchanged between ticks — otherwise Compose skips the
+                    // value-equal recomposition and the display freezes after 1s.
+                    val now = remember(tickPulse, eventPulse) { System.currentTimeMillis() }
                     val displaySeconds = when (ts.phase) {
                         FocusTimer.Phase.FOCUS -> ((ts.focusEndsAt - now) / 1000L).coerceAtLeast(0)
                         FocusTimer.Phase.BREAK -> ((ts.breakEndsAt - now) / 1000L).coerceAtLeast(0)
