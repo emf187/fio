@@ -52,6 +52,7 @@ fun HabitsScreen(repository: FioRepository) {
     val colors = LocalFioColors.current
     val context = LocalContext.current
     val habits by repository.habits.collectAsState()
+    val sessionLogs by repository.sessionLogs.collectAsState()
     val haptics = rememberFioHaptics()
 
     val activeHabits = habits.filter { !it.archived }
@@ -603,6 +604,11 @@ fun HabitsScreen(repository: FioRepository) {
                     )
                 }
             }
+        }
+
+        // --- Focus timer: minutes, purposes & 7-day graph (also feeds Life Score) ---
+        item {
+            FocusStatsCard(sessionLogs = sessionLogs)
         }
 
         // --- Archived habits (kept for stats and backups, out of the daily list) ---

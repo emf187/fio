@@ -1,4 +1,6 @@
-﻿package com.example.fio.ui.screens
+﻿@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
+package com.example.fio.ui.screens
 
 import android.content.Context
 import android.graphics.Bitmap
@@ -15,11 +17,15 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,6 +37,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -42,12 +49,18 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DriveFileRenameOutline
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -70,6 +83,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -93,6 +107,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.example.fio.data.model.GalleryImage
 import com.example.fio.data.storage.FioRepository
 import com.example.fio.ui.components.AttachImageButton
+import com.example.fio.ui.components.FioSelectionBar
 import com.example.fio.ui.components.rememberCameraCapture
 import com.example.fio.ui.components.FioCard
 import com.example.fio.ui.theme.LocalFioColors
@@ -112,23 +127,44 @@ fun GalleryScreen(repository: FioRepository) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val images by repository.galleryImages.collectAsState()
+    val folders by repository.galleryFolders.collectAsState()
 
     var isImporting by remember { mutableStateOf(false) }
     var viewerIndex by remember { mutableStateOf<Int?>(null) }
     var pendingDelete by remember { mutableStateOf<GalleryImage?>(null) }
-    var actionTarget by remember { mutableStateOf<GalleryImage?>(null) }
     var renameTarget by remember { mutableStateOf<GalleryImage?>(null) }
     var renameInput by remember { mutableStateOf("") }
     var showAddMenu by remember { mutableStateOf(false) }
+
+    // Multi-select: long-press starts selection, tap toggles while active.
+    var selectedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var showMoveDialog by remember { mutableStateOf(false) }
+    var confirmBulkDelete by remember { mutableStateOf(false) }
+
+    // Folder browsing: null = All photos, "" = Unfiled, otherwise a folder name.
+    var selectedFolder by remember { mutableStateOf<String?>(null) }
+    var showFolderDialog by remember { mutableStateOf(false) }
+    var newFolderInput by remember { mutableStateOf("") }
+    var pendingFolderDelete by remember { mutableStateOf<String?>(null) }
+
+    val folderNames = remember(folders, images) { repository.galleryFolderNames(images) }
+    val visibleImages = remember(images, selectedFolder) {
+        when (selectedFolder) {
+            null -> images
+            else -> images.filter { it.folder == selectedFolder }
+        }
+    }
 
     val picker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia(25)
     ) { uris: List<Uri> ->
         if (uris.isEmpty()) return@rememberLauncherForActivityResult
         isImporting = true
+        val targetFolder = selectedFolder ?: ""
         scope.launch {
             val imported = withContext(Dispatchers.IO) {
                 uris.mapNotNull { uri -> copyImageToGallery(context, uri) }
+                    .map { if (targetFolder.isEmpty()) it else it.copy(folder = targetFolder) }
             }
             repository.addGalleryImages(imported)
             isImporting = false
@@ -142,9 +178,11 @@ fun GalleryScreen(repository: FioRepository) {
 
     val captureGalleryPhoto = rememberCameraCapture { uri ->
         isImporting = true
+        val targetFolder = selectedFolder ?: ""
         scope.launch {
             val imported = withContext(Dispatchers.IO) {
                 listOfNotNull(copyImageToGallery(context, uri))
+                    .map { if (targetFolder.isEmpty()) it else it.copy(folder = targetFolder) }
             }
             repository.addGalleryImages(imported)
             isImporting = false
@@ -214,6 +252,90 @@ fun GalleryScreen(repository: FioRepository) {
             }
         }
 
+        // Selection toolbar (multi-select): move or delete many photos at once.
+        if (selectedIds.isNotEmpty()) {
+            FioSelectionBar(
+                count = selectedIds.size,
+                onClear = { selectedIds = emptySet() },
+                onSelectAll = { selectedIds = visibleImages.map { it.id }.toSet() },
+                modifier = Modifier.padding(bottom = 8.dp)
+            ) {
+                TextButton(onClick = { showMoveDialog = true }) {
+                    Icon(
+                        imageVector = Icons.Default.Folder,
+                        contentDescription = null,
+                        tint = colors.primary,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Move", color = colors.primary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                }
+                TextButton(onClick = { confirmBulkDelete = true }) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = null,
+                        tint = colors.error,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Delete", color = colors.error, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+
+        // Folder filter chips: All / Unfiled / each user folder, plus create-folder.
+        // Always shown so a folder can be created even before the first photo.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (images.isNotEmpty()) {
+                    GalleryFolderChip("All", images.size, selectedFolder == null, onClick = { selectedFolder = null })
+                    GalleryFolderChip("Unfiled", images.count { it.folder.isBlank() }, selectedFolder == "", onClick = { selectedFolder = "" })
+                }
+                folderNames.forEach { name ->
+                    GalleryFolderChip(
+                        label = name,
+                        count = images.count { it.folder == name },
+                        selected = selectedFolder == name,
+                        onClick = { selectedFolder = name },
+                        onLongClick = { pendingFolderDelete = name }
+                    )
+                }
+                if (images.isEmpty() && folderNames.isEmpty()) {
+                    Text(
+                        text = "Make a folder for each subject or topic.",
+                        color = colors.textMuted,
+                        fontSize = 11.sp
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            IconButton(
+                onClick = {
+                    newFolderInput = ""
+                    showFolderDialog = true
+                },
+                modifier = Modifier.size(34.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.CreateNewFolder,
+                    contentDescription = "New folder",
+                    tint = colors.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+
         if (images.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -240,6 +362,31 @@ fun GalleryScreen(repository: FioRepository) {
                     )
                 }
             }
+        } else if (visibleImages.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        imageVector = Icons.Default.Folder,
+                        contentDescription = null,
+                        tint = colors.textMuted,
+                        modifier = Modifier.size(40.dp)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = if ((selectedFolder ?: "").isBlank()) "Nothing unfiled." else "This folder is empty.",
+                        color = colors.textSecondary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = "Long-press a photo to move it here, or add new ones.",
+                        color = colors.textMuted,
+                        fontSize = 10.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 32.dp)
+                    )
+                }
+            }
         } else {
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(minSize = 108.dp),
@@ -248,11 +395,23 @@ fun GalleryScreen(repository: FioRepository) {
                 horizontalArrangement = Arrangement.spacedBy(3.dp),
                 verticalArrangement = Arrangement.spacedBy(3.dp)
             ) {
-                items(images, key = { it.id }) { image ->
+                items(visibleImages, key = { it.id }) { image ->
+                    val selected = image.id in selectedIds
                     GalleryThumb(
                         file = repository.galleryFile(image),
-                        onClick = { viewerIndex = images.indexOf(image).coerceAtLeast(0) },
-                        onLongClick = { actionTarget = image }
+                        selected = selected,
+                        onClick = {
+                            val active = selectedIds
+                            if (active.isNotEmpty()) {
+                                selectedIds = if (image.id in active) active - image.id else active + image.id
+                            } else {
+                                viewerIndex = visibleImages.indexOf(image).coerceAtLeast(0)
+                            }
+                        },
+                        onLongClick = {
+                            val active = selectedIds
+                            selectedIds = if (image.id in active) active - image.id else active + image.id
+                        }
                     )
                 }
             }
@@ -260,11 +419,12 @@ fun GalleryScreen(repository: FioRepository) {
     }
 
     // Full-screen viewer
-    viewerIndex?.let { startIndex ->
+    if (viewerIndex != null && visibleImages.isNotEmpty()) {
+        val startIndex = viewerIndex ?: 0
         GalleryViewer(
-            images = images,
+            images = visibleImages,
             repository = repository,
-            startIndex = startIndex.coerceIn(0, (images.size - 1).coerceAtLeast(0)),
+            startIndex = startIndex.coerceIn(0, visibleImages.size - 1),
             onClose = { viewerIndex = null },
             onDeleteRequest = { image -> pendingDelete = image },
             onRenameRequest = { image ->
@@ -274,40 +434,91 @@ fun GalleryScreen(repository: FioRepository) {
         )
     }
 
-    // Long-press options for a photo: name it or remove it
-    actionTarget?.let { image ->
+    // Bulk move (multi-select) — also used for a single photo.
+    if (showMoveDialog) {
         AlertDialog(
-            onDismissRequest = { actionTarget = null },
+            onDismissRequest = { showMoveDialog = false },
             containerColor = colors.surface,
-            title = { Text("Photo options", color = colors.textPrimary) },
+            title = { Text("Move ${selectedIds.size} photo(s)", color = colors.textPrimary) },
+            text = {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                    modifier = Modifier.heightIn(max = 280.dp).verticalScroll(rememberScrollState())
+                ) {
+                    Text("Choose a folder:", color = colors.textSecondary, fontSize = 12.sp)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    TextButton(
+                        onClick = {
+                            repository.moveGalleryImages(selectedIds, "")
+                            selectedIds = emptySet()
+                            showMoveDialog = false
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Image,
+                            contentDescription = null,
+                            tint = colors.textMuted,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Unfiled", color = colors.textPrimary, fontSize = 12.sp)
+                    }
+                    folderNames.forEach { name ->
+                        TextButton(
+                            onClick = {
+                                repository.moveGalleryImages(selectedIds, name)
+                                selectedIds = emptySet()
+                                showMoveDialog = false
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Folder,
+                                contentDescription = null,
+                                tint = colors.primary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(name, color = colors.textPrimary, fontSize = 12.sp)
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showMoveDialog = false }) {
+                    Text("Cancel", color = colors.textMuted)
+                }
+            }
+        )
+    }
+
+    // Bulk delete confirmation (multi-select)
+    if (confirmBulkDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmBulkDelete = false },
+            containerColor = colors.surface,
+            title = { Text("Delete ${selectedIds.size} photo(s)?", color = colors.textPrimary) },
             text = {
                 Text(
-                    text = "Give this photo a name, or remove it from the gallery.",
+                    text = "The selected photos will be removed from your gallery. This cannot be undone.",
                     color = colors.textSecondary
                 )
             },
             confirmButton = {
                 TextButton(onClick = {
-                    actionTarget = null
-                    renameTarget = image
-                    renameInput = image.displayName
+                    repository.removeGalleryImages(selectedIds)
+                    selectedIds = emptySet()
+                    confirmBulkDelete = false
+                    viewerIndex = null
                 }) {
-                    Icon(
-                        imageVector = Icons.Default.DriveFileRenameOutline,
-                        contentDescription = null,
-                        tint = colors.primary,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Name this photo", color = colors.primary, fontWeight = FontWeight.SemiBold)
+                    Text("Delete", color = colors.error, fontWeight = FontWeight.SemiBold)
                 }
             },
             dismissButton = {
-                TextButton(onClick = {
-                    actionTarget = null
-                    pendingDelete = image
-                }) {
-                    Text("Remove", color = colors.error, fontWeight = FontWeight.SemiBold)
+                TextButton(onClick = { confirmBulkDelete = false }) {
+                    Text("Cancel", color = colors.textMuted)
                 }
             }
         )
@@ -364,7 +575,7 @@ fun GalleryScreen(repository: FioRepository) {
                 TextButton(onClick = {
                     repository.removeGalleryImage(image.id)
                     pendingDelete = null
-                    if (images.size <= 1) viewerIndex = null
+                    if (visibleImages.size <= 1) viewerIndex = null
                 }) {
                     Text("Remove", color = colors.error, fontWeight = FontWeight.SemiBold)
                 }
@@ -376,28 +587,186 @@ fun GalleryScreen(repository: FioRepository) {
             }
         )
     }
+
+    // Create folder (and manage: delete existing ones)
+    if (showFolderDialog) {
+        AlertDialog(
+            onDismissRequest = { showFolderDialog = false },
+            containerColor = colors.surface,
+            title = { Text("New folder", color = colors.textPrimary) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = newFolderInput,
+                        onValueChange = { newFolderInput = it.take(40) },
+                        placeholder = { Text("Folder name", color = colors.textMuted) },
+                        singleLine = true,
+                        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = colors.primary,
+                            unfocusedBorderColor = colors.border,
+                            focusedTextColor = colors.textPrimary,
+                            unfocusedTextColor = colors.textPrimary
+                        )
+                    )
+                    if (folderNames.isNotEmpty()) {
+                        Text(
+                            text = "Existing folders — long-press a folder chip, or tap the bin to delete it (photos move to Unfiled):",
+                            color = colors.textMuted,
+                            fontSize = 10.sp
+                        )
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                            modifier = Modifier.heightIn(max = 160.dp).verticalScroll(rememberScrollState())
+                        ) {
+                            folderNames.forEach { name ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "$name (${images.count { it.folder == name }})",
+                                        color = colors.textPrimary,
+                                        fontSize = 12.sp,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    IconButton(
+                                        onClick = { pendingFolderDelete = name },
+                                        modifier = Modifier.size(26.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Delete,
+                                            contentDescription = "Delete folder",
+                                            tint = colors.error,
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (repository.addGalleryFolder(newFolderInput)) {
+                        newFolderInput = ""
+                        showFolderDialog = false
+                    }
+                }) {
+                    Text("Create", color = colors.primary, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showFolderDialog = false }) {
+                    Text("Cancel", color = colors.textMuted)
+                }
+            }
+        )
+    }
+
+    // Delete folder confirmation
+    pendingFolderDelete?.let { name ->
+        AlertDialog(
+            onDismissRequest = { pendingFolderDelete = null },
+            containerColor = colors.surface,
+            title = { Text("Delete \u201c$name\u201d?", color = colors.textPrimary) },
+            text = {
+                Text(
+                    text = "Photos in this folder move back to Unfiled. The photos themselves are not deleted.",
+                    color = colors.textSecondary
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    repository.deleteGalleryFolder(name)
+                    if (selectedFolder == name) selectedFolder = null
+                    pendingFolderDelete = null
+                }) {
+                    Text("Delete", color = colors.error, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingFolderDelete = null }) {
+                    Text("Cancel", color = colors.textMuted)
+                }
+            }
+        )
+    }
+}
+
+/** Folder chip for the gallery filter row: label + photo count, tap to filter, long-press to delete. */
+@Composable
+private fun GalleryFolderChip(
+    label: String,
+    count: Int,
+    selected: Boolean,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null
+) {
+    val colors = LocalFioColors.current
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (selected) colors.primaryContainer else colors.surfaceElevated)
+            .then(
+                if (onLongClick != null) {
+                    Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick)
+                } else {
+                    Modifier.clickable(onClick = onClick)
+                }
+            )
+            .border(1.dp, if (selected) colors.primary else colors.border, RoundedCornerShape(10.dp))
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = label,
+                color = if (selected) colors.primary else colors.textSecondary,
+                fontSize = 11.sp,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text = "$count",
+                color = if (selected) colors.primary else colors.textMuted,
+                fontSize = 10.sp
+            )
+        }
+    }
 }
 
 @Composable
 private fun GalleryThumb(
     file: File,
     onClick: () -> Unit,
-    onLongClick: () -> Unit
+    onLongClick: () -> Unit,
+    selected: Boolean = false
 ) {
     val colors = LocalFioColors.current
     val bitmap by produceState<Bitmap?>(initialValue = null, file.absolutePath) {
         value = withContext(Dispatchers.IO) { decodeSampledBitmap(file, 400) }
     }
+    // pointerInput only restarts when its key changes, so the gesture block
+    // must call the *latest* lambdas — otherwise taps keep using the state
+    // captured on first composition (e.g. can't unselect a selected photo).
+    val currentOnClick by rememberUpdatedState(onClick)
+    val currentOnLongClick by rememberUpdatedState(onLongClick)
 
     Box(
         modifier = Modifier
             .aspectRatio(1f)
             .clip(RoundedCornerShape(10.dp))
             .background(colors.surfaceElevated)
+            .border(
+                width = if (selected) 2.dp else 0.dp,
+                color = if (selected) colors.primary else Color.Transparent,
+                shape = RoundedCornerShape(10.dp)
+            )
             .pointerInput(file.absolutePath) {
                 detectTapGestures(
-                    onTap = { onClick() },
-                    onLongPress = { onLongClick() }
+                    onTap = { currentOnClick() },
+                    onLongPress = { currentOnLongClick() }
                 )
             }
     ) {
@@ -416,6 +785,24 @@ private fun GalleryThumb(
                     contentDescription = null,
                     tint = colors.textMuted,
                     modifier = Modifier.size(24.dp)
+                )
+            }
+        }
+        if (selected) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(4.dp)
+                    .size(20.dp)
+                    .clip(CircleShape)
+                    .background(colors.primary),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = "Selected",
+                    tint = colors.onPrimary,
+                    modifier = Modifier.size(13.dp)
                 )
             }
         }

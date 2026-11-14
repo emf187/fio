@@ -233,6 +233,8 @@ data class GalleryImage(
     val fileName: String,
     val displayName: String = "",
     val mimeType: String = "image/*",
+    /** Which user-created folder the photo lives in; empty string = unfiled. */
+    val folder: String = "",
     val addedAtMillis: Long = currentTimestamp()
 )
 
@@ -253,6 +255,12 @@ data class FocusSessionLog(
     val strikesUsed: Int = 0,
     val breaksTaken: Int = 0,
     val status: SessionStatus = SessionStatus.COMPLETED,
+    /** Why this session was run: Study / Leisure / Research (same sections as the Study companion). */
+    val sectionType: SectionType = SectionType.STUDY,
+    /** Optional course this session belonged to (a CourseSection id), when the user picked one. */
+    val courseId: String? = null,
+    /** Free-text details the user typed about the session, e.g. "Chapter 4 problems". */
+    val details: String = "",
     val loggedAtMillis: Long = currentTimestamp()
 )
 

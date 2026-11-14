@@ -52,6 +52,7 @@ import com.example.fio.ui.components.FioHaptics
 import com.example.fio.ui.components.FioMarkdown
 import com.example.fio.ui.components.FioPrimaryButton
 import com.example.fio.ui.components.FioSecondaryButton
+import com.example.fio.ui.components.FioSelectionBar
 import com.example.fio.ui.components.rememberCameraCapture
 import com.example.fio.ui.components.rememberFioHaptics
 import com.example.fio.ui.components.saveImageToDevice
@@ -124,6 +125,9 @@ fun TutorScreen(
     var historyPendingClear by remember { mutableStateOf(false) }
     // Long-press target: the single practice session to delete.
     var sessionPendingDelete by remember { mutableStateOf<TutorSession?>(null) }
+    // Multi-select for past practice sessions.
+    var selectedSessionIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var confirmSessionBulkDelete by remember { mutableStateOf(false) }
     // Long-press on a subject chip: edit its title and details.
     var courseEditTarget by remember { mutableStateOf<CourseSection?>(null) }
 
@@ -795,18 +799,45 @@ Evaluate this answer. Return ONLY a valid JSON object without markdown fences, w
                 }
             }
 
+            // Multi-select toolbar for practice sessions.
+            if (selectedSessionIds.isNotEmpty()) {
+                item {
+                    FioSelectionBar(
+                        count = selectedSessionIds.size,
+                        onClear = { selectedSessionIds = emptySet() },
+                        onSelectAll = { selectedSessionIds = courseSessions.map { it.id }.toSet() }
+                    ) {
+                        TextButton(onClick = { confirmSessionBulkDelete = true }) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = null,
+                                tint = colors.error,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Delete", color = colors.error, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+            }
+
             items(courseSessions, key = { it.id }) { session ->
+                val isChosen = session.id in selectedSessionIds
                 FioCard(
                     backgroundColor = colors.surface,
-                    borderColor = colors.border,
+                    borderColor = if (isChosen) colors.primary else colors.border,
                     padding = PaddingValues(12.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .combinedClickable(
-                            onClick = {},
+                            onClick = {
+                                if (selectedSessionIds.isNotEmpty()) {
+                                    selectedSessionIds = if (isChosen) selectedSessionIds - session.id else selectedSessionIds + session.id
+                                }
+                            },
                             onLongClick = {
                                 haptics.longPress()
-                                sessionPendingDelete = session
+                                selectedSessionIds = if (isChosen) selectedSessionIds - session.id else selectedSessionIds + session.id
                             }
                         )
                 ) {
@@ -1418,6 +1449,35 @@ Evaluate this answer. Return ONLY a valid JSON object without markdown fences, w
     }
 
     // Confirmation (long-press): delete one graded practice session.
+    // Bulk delete confirmation for selected practice sessions
+    if (confirmSessionBulkDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmSessionBulkDelete = false },
+            containerColor = colors.surface,
+            title = { Text("Delete ${selectedSessionIds.size} session(s)?", color = colors.textPrimary) },
+            text = {
+                Text(
+                    text = "The selected practice results will be removed. This cannot be undone.",
+                    color = colors.textSecondary
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    repository.deleteTutorSessions(selectedSessionIds)
+                    selectedSessionIds = emptySet()
+                    confirmSessionBulkDelete = false
+                }) {
+                    Text("Delete", color = colors.error, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmSessionBulkDelete = false }) {
+                    Text("Cancel", color = colors.textMuted)
+                }
+            }
+        )
+    }
+
     sessionPendingDelete?.let { session ->
         AlertDialog(
             onDismissRequest = { sessionPendingDelete = null },

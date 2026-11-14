@@ -11,6 +11,7 @@ import androidx.core.app.NotificationCompat
 import com.example.MainActivity
 import com.example.R
 import com.example.fio.data.model.FocusSessionLog
+import com.example.fio.data.model.SectionType
 import com.example.fio.data.model.SessionStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -47,6 +48,10 @@ object FocusTimer {
         val strikesUsed: Int = 0,
         val breaksTaken: Int = 0,
         val emergencyUsed: Boolean = false,
+        /** Purpose picked at setup: Study / Leisure / Research (same sections as Study companion). */
+        val sectionType: SectionType = SectionType.STUDY,
+        /** Optional course the session belongs to (CourseSection id). */
+        val courseId: String? = null,
         /** Set once when a session finishes or is broken; the screen shows the summary. */
         val finishedStatus: SessionStatus? = null
     ) {
@@ -75,6 +80,8 @@ object FocusTimer {
         lockdown: Boolean,
         breakFrequencyMinutes: Int,
         breakDurationMinutes: Int,
+        sectionType: SectionType = SectionType.STUDY,
+        courseId: String? = null,
         context: Context
     ) {
         val now = System.currentTimeMillis()
@@ -90,7 +97,9 @@ object FocusTimer {
                 alreadyFocusedMinutes = 0,
                 focusEndsAt = now + minutes * 60_000L,
                 startingStrikes = strikes,
-                strikesRemaining = strikes
+                strikesRemaining = strikes,
+                sectionType = sectionType,
+                courseId = courseId?.takeIf { it.isNotBlank() }
             )
         )
         serviceStarter?.invoke(context)
@@ -114,7 +123,9 @@ object FocusTimer {
                             startingStrikes = s.startingStrikes,
                             strikesUsed = s.strikesUsed,
                             breaksTaken = s.breaksTaken,
-                            status = SessionStatus.COMPLETED
+                            status = SessionStatus.COMPLETED,
+                            sectionType = s.sectionType,
+                            courseId = s.courseId
                         )
                     )
                     stateRef.set(
@@ -212,7 +223,9 @@ object FocusTimer {
                 startingStrikes = s.startingStrikes,
                 strikesUsed = s.strikesUsed + 1,
                 breaksTaken = s.breaksTaken,
-                status = SessionStatus.BROKEN
+                status = SessionStatus.BROKEN,
+                sectionType = s.sectionType,
+                courseId = s.courseId
             )
         )
         stateRef.set(
@@ -247,7 +260,9 @@ object FocusTimer {
                 startingStrikes = s.startingStrikes,
                 strikesUsed = s.strikesUsed,
                 breaksTaken = s.breaksTaken,
-                status = status
+                status = status,
+                sectionType = s.sectionType,
+                courseId = s.courseId
             )
         )
         stateRef.set(s.copy(phase = Phase.DONE, alreadyFocusedMinutes = focused, finishedStatus = status))
@@ -273,7 +288,13 @@ object FocusTimer {
         }
     }
 
+    /** Id of the most recently written FocusSessionLog, so the summary dialog can
+     *  attach the details the user types. Survives consumeFinished(). */
+    @Volatile
+    var lastLoggedSessionId: String? = null
+
     private fun logSession(log: FocusSessionLog) {
+        lastLoggedSessionId = log.id
         try { sessionLogger?.invoke(log) } catch (_: Exception) { }
     }
 

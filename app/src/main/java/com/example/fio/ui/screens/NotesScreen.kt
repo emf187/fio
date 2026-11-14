@@ -42,6 +42,7 @@ import com.example.fio.ui.components.rememberCameraCapture
 import com.example.fio.ui.components.FioBadge
 import com.example.fio.ui.components.FioCard
 import com.example.fio.ui.components.FioDivider
+import com.example.fio.ui.components.FioSelectionBar
 import com.example.fio.ui.components.buildMarkdownAnnotated
 import com.example.fio.ui.components.markdownVisualTransformation
 import com.example.fio.ui.components.stripMarkdownMarkers
@@ -69,6 +70,11 @@ fun NotesScreen(repository: FioRepository) {
     // Long-press a folder chip → delete confirm
     var folderPendingDelete by remember { mutableStateOf<String?>(null) }
     var notePendingDelete by remember { mutableStateOf<NoteItem?>(null) }
+
+    // Multi-select: long-press a note to start selecting; tap toggles while active.
+    var selectedNoteIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var showNoteMoveDialog by remember { mutableStateOf(false) }
+    var confirmNoteBulkDelete by remember { mutableStateOf(false) }
 
     // Active Note Editor state
     var editingNote by remember { mutableStateOf<NoteItem?>(null) }
@@ -625,6 +631,38 @@ fun NotesScreen(repository: FioRepository) {
             }
         }
 
+        // Multi-select toolbar: move or delete many notes at once.
+        if (selectedNoteIds.isNotEmpty()) {
+            item {
+                FioSelectionBar(
+                    count = selectedNoteIds.size,
+                    onClear = { selectedNoteIds = emptySet() },
+                    onSelectAll = { selectedNoteIds = filteredNotes.map { it.id }.toSet() }
+                ) {
+                    TextButton(onClick = { showNoteMoveDialog = true }) {
+                        Icon(
+                            imageVector = Icons.Default.Folder,
+                            contentDescription = null,
+                            tint = colors.primary,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Move", color = colors.primary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    TextButton(onClick = { confirmNoteBulkDelete = true }) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = null,
+                            tint = colors.error,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Delete", color = colors.error, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+        }
+
         // Notes List
         if (filteredNotes.isEmpty()) {
             item {
@@ -632,15 +670,24 @@ fun NotesScreen(repository: FioRepository) {
             }
         } else {
             items(filteredNotes, key = { it.id }) { noteItem ->
+                val isChosen = noteItem.id in selectedNoteIds
                 FioCard(
                     backgroundColor = colors.surface,
-                    borderColor = colors.border,
+                    borderColor = if (isChosen) colors.primary else colors.border,
                     padding = PaddingValues(12.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .combinedClickable(
-                            onClick = { editingNote = noteItem },
-                            onLongClick = { notePendingDelete = noteItem }
+                            onClick = {
+                                if (selectedNoteIds.isNotEmpty()) {
+                                    selectedNoteIds = if (isChosen) selectedNoteIds - noteItem.id else selectedNoteIds + noteItem.id
+                                } else {
+                                    editingNote = noteItem
+                                }
+                            },
+                            onLongClick = {
+                                selectedNoteIds = if (isChosen) selectedNoteIds - noteItem.id else selectedNoteIds + noteItem.id
+                            }
                         )
                         .testTag("note_item_${noteItem.id}")
                 ) {
@@ -665,6 +712,15 @@ fun NotesScreen(repository: FioRepository) {
                             }
                         }
                         Text(text = formatTimestamp(noteItem.updatedAtMillis), color = colors.textMuted, fontSize = 9.sp)
+                        if (isChosen) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Icon(
+                                imageVector = Icons.Default.CheckCircle,
+                                contentDescription = "Selected",
+                                tint = colors.primary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
@@ -685,6 +741,86 @@ fun NotesScreen(repository: FioRepository) {
                 }
             }
         }
+    }
+
+    // Bulk move dialog (multi-select)
+    if (showNoteMoveDialog) {
+        AlertDialog(
+            onDismissRequest = { showNoteMoveDialog = false },
+            containerColor = colors.surface,
+            title = { Text("Move ${selectedNoteIds.size} note(s)", color = colors.textPrimary) },
+            text = {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                    modifier = Modifier.heightIn(max = 280.dp).verticalScroll(rememberScrollState())
+                ) {
+                    TextButton(
+                        onClick = {
+                            repository.moveNotes(selectedNoteIds, "")
+                            selectedNoteIds = emptySet()
+                            showNoteMoveDialog = false
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Unfiled", color = colors.textPrimary, fontSize = 12.sp)
+                    }
+                    allFolders.forEach { folder ->
+                        TextButton(
+                            onClick = {
+                                repository.moveNotes(selectedNoteIds, folder)
+                                selectedNoteIds = emptySet()
+                                showNoteMoveDialog = false
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Folder,
+                                contentDescription = null,
+                                tint = colors.primary,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(folder, color = colors.textPrimary, fontSize = 12.sp)
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showNoteMoveDialog = false }) {
+                    Text("Cancel", color = colors.textMuted)
+                }
+            }
+        )
+    }
+
+    // Bulk delete confirmation (multi-select)
+    if (confirmNoteBulkDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmNoteBulkDelete = false },
+            containerColor = colors.surface,
+            title = { Text("Delete ${selectedNoteIds.size} note(s)?", color = colors.textPrimary) },
+            text = {
+                Text(
+                    text = "The selected notes will be removed. This cannot be undone.",
+                    color = colors.textSecondary
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    repository.deleteNotes(selectedNoteIds)
+                    selectedNoteIds = emptySet()
+                    confirmNoteBulkDelete = false
+                }) {
+                    Text("Delete", color = colors.error, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmNoteBulkDelete = false }) {
+                    Text("Cancel", color = colors.textMuted)
+                }
+            }
+        )
     }
 
     // New folder dialog

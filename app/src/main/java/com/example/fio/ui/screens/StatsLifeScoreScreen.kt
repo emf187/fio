@@ -253,7 +253,7 @@ fun StatsLifeScoreScreen(
                             val trendIcon = if (lifeScore.trend >= 0) Icons.Default.TrendingUp else Icons.Default.TrendingDown
                             Icon(imageVector = trendIcon, contentDescription = null, tint = trendColor, modifier = Modifier.size(20.dp))
                             Text(
-                                text = "${if (lifeScore.trend >= 0) "+" else ""}${lifeScore.trend} vs last week",
+                                text = "${if (lifeScore.trend >= 0) "+" else ""}${lifeScore.trend} today",
                                 color = trendColor,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold

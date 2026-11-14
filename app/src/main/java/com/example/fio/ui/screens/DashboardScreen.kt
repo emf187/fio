@@ -50,7 +50,13 @@ fun DashboardScreen(
     val habits by repository.habits.collectAsState()
     val goals by repository.goals.collectAsState()
     val settings by repository.settings.collectAsState()
-    val lifeScore = remember(events, habits, goals) { repository.calculateLifeScore() }
+    val sessionLogs by repository.sessionLogs.collectAsState()
+    val sleepLogs by repository.sleepLogs.collectAsState()
+    val mealLogs by repository.mealLogs.collectAsState()
+    val tutorSessions by repository.tutorSessions.collectAsState()
+    val lifeScore = remember(events, habits, goals, sessionLogs, sleepLogs, mealLogs, tutorSessions, settings) {
+        repository.calculateLifeScore()
+    }
 
     // Wingman Agent State (Full App Control & Vision)
     var agentInput by remember { mutableStateOf("") }

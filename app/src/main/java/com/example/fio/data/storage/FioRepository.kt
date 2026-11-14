@@ -104,6 +104,10 @@ class FioRepository(private val context: Context) {
     private val _galleryImages = MutableStateFlow<List<GalleryImage>>(emptyList())
     val galleryImages: StateFlow<List<GalleryImage>> = _galleryImages.asStateFlow()
 
+    /** User-created gallery folders (names). Photos carry the folder name they belong to. */
+    private val _galleryFolders = MutableStateFlow<List<String>>(emptyList())
+    val galleryFolders: StateFlow<List<String>> = _galleryFolders.asStateFlow()
+
     private val galleryDir = File(context.filesDir, "fio_gallery")
 
     private val _settings = MutableStateFlow(AppSettings())
@@ -190,6 +194,7 @@ class FioRepository(private val context: Context) {
         }
 
         _galleryImages.value = loadGalleryImages()
+        _galleryFolders.value = loadGalleryFolders()
         loadTimetable()
         loadNoteFolders()
     }
@@ -233,69 +238,74 @@ class FioRepository(private val context: Context) {
     }
 
     // --- Life Score Engine (Section 12 of spec) - Zero mock, purely user-driven ---
-    fun calculateLifeScore(): LifeScoreBreakdown {
+
+    /** Raw category scores for one snapshot of the data. */
+    private data class LifeScoreParts(
+        val study: Int,
+        val sleep: Int,
+        val meals: Int,
+        val habits: Int,
+        val activity: Int,
+        val goals: Int,
+        val overall: Int
+    )
+
+    /**
+     * Scores the data as it stood before [cutoffExclusive] (null = now) with the
+     * habit tracker evaluated on [day]. Running it twice — once open-ended and
+     * once cut at midnight — gives the points added today.
+     */
+    private fun computeLifeScoreParts(cutoffExclusive: Long?, day: java.time.LocalDate): LifeScoreParts {
         val s = _settings.value
         val weights = s.categoryWeights
 
-        val hasAnyData = _sessionLogs.value.isNotEmpty() ||
-                _sleepLogs.value.isNotEmpty() ||
-                _mealLogs.value.isNotEmpty() ||
-                _habits.value.isNotEmpty() ||
-                _events.value.isNotEmpty() ||
-                _goals.value.isNotEmpty()
-
-        if (!hasAnyData) {
-            return LifeScoreBreakdown(
-                overallScore = 0,
-                previousWeekScore = 0,
-                trend = 0,
-                studyScore = 0,
-                sleepScore = 0,
-                mealsScore = 0,
-                habitsScore = 0,
-                activityScore = 0,
-                goalsScore = 0,
-                note = "No activity logged yet. Schedule events, complete focus sessions, log meals or sleep to calculate your score."
-            )
-        }
-
         // 1. Study Score (0-100)
-        val completedSessions = _sessionLogs.value.filter { it.status == SessionStatus.COMPLETED }
+        val completedSessions = _sessionLogs.value.filter {
+            it.status == SessionStatus.COMPLETED &&
+                (cutoffExclusive == null || it.loggedAtMillis < cutoffExclusive)
+        }
         val studyScore = if (completedSessions.isNotEmpty()) {
             val totalMins = completedSessions.sumOf { it.actualMinutes }
             val focusComp = ((totalMins / 120.0) * 80).coerceIn(10.0, 80.0)
-            val tutorBonus = if (_tutorSessions.value.isNotEmpty()) _tutorSessions.value.map { it.scorePercentage }.average() * 0.2 else 0.0
+            val tutorScores = _tutorSessions.value
+                .filter { cutoffExclusive == null || it.loggedAtMillis < cutoffExclusive }
+                .map { it.scorePercentage }
+            val tutorBonus = if (tutorScores.isNotEmpty()) tutorScores.average() * 0.2 else 0.0
             (focusComp + tutorBonus).coerceIn(0.0, 100.0).roundToInt()
         } else 0
 
         // 2. Sleep Score (0-100)
-        val recentSleep = _sleepLogs.value.firstOrNull { it.type == SleepType.NIGHT }
+        val recentSleep = _sleepLogs.value
+            .filter { cutoffExclusive == null || it.loggedAtMillis < cutoffExclusive }
+            .firstOrNull { it.type == SleepType.NIGHT }
         val sleepScore = if (recentSleep != null) {
             val ratio = (recentSleep.durationHours / s.sleepTargetHours).coerceAtMost(1.0)
             ((ratio * 80) + (recentSleep.qualityRating * 4)).coerceIn(0.0, 100.0).roundToInt()
         } else 0
 
         // 3. Meals Score (0-100)
-        val todayMealCount = _mealLogs.value.size
-        val mealScore = if (todayMealCount > 0) {
-            val ratio = (todayMealCount.toDouble() / s.mealTargetCount).coerceAtMost(1.0)
+        val mealCount = _mealLogs.value.count {
+            cutoffExclusive == null || it.timestampMillis < cutoffExclusive
+        }
+        val mealScore = if (mealCount > 0) {
+            val ratio = (mealCount.toDouble() / s.mealTargetCount).coerceAtMost(1.0)
             (ratio * 100).roundToInt()
         } else 0
 
         // 4. Habits Score (0-100) — one aggregate of everything in the habit
-        //    tracker: how far today is done, the 7-day success rate and how
+        //    tracker: how far the day is done, the 7-day success rate and how
         //    strong the active streaks are. Averaged across active habits.
         val activeHabits = _habits.value.filter { !it.archived }
         val habitScore = if (activeHabits.isNotEmpty()) {
-            val today = todayDateString()
+            val dayKey = day.toString()
             val perHabit = activeHabits.map { h ->
                 val goal = h.dailyGoal.coerceAtLeast(1)
-                val todayPart = ((h.progressDates[today] ?: 0).toDouble() / goal).coerceIn(0.0, 1.0)
+                val todayPart = ((h.progressDates[dayKey] ?: 0).toDouble() / goal).coerceIn(0.0, 1.0)
                 // 7-day success rate: completed days vs days that should be done.
                 val interval = if (h.timesPerWeek >= 7) 1 else (7 / h.timesPerWeek.coerceIn(1, 7)).coerceAtLeast(1)
                 var doneDays = 0
                 var dueDays = 0
-                var cursor = java.time.LocalDate.now()
+                var cursor = day
                 repeat(7) { dayIndex ->
                     val due = dayIndex % interval == 0
                     if (h.completedDates.contains(cursor.toString())) {
@@ -335,24 +345,60 @@ class FioRepository(private val context: Context) {
         if (habitScore > 0) { weightedSum += habitScore * weights.habits; totalWeight += weights.habits }
 
         val overall = if (totalWeight > 0) (weightedSum / totalWeight).roundToInt() else 0
-        val trend = 0
 
-        val note = if (overall > 0) {
-            "Current score is $overall% based on your logged actions today."
+        return LifeScoreParts(studyScore, sleepScore, mealScore, habitScore, activityScore, goalsScore, overall)
+    }
+
+    fun calculateLifeScore(): LifeScoreBreakdown {
+        val hasAnyData = _sessionLogs.value.isNotEmpty() ||
+                _sleepLogs.value.isNotEmpty() ||
+                _mealLogs.value.isNotEmpty() ||
+                _habits.value.isNotEmpty() ||
+                _events.value.isNotEmpty() ||
+                _goals.value.isNotEmpty()
+
+        if (!hasAnyData) {
+            return LifeScoreBreakdown(
+                overallScore = 0,
+                previousWeekScore = 0,
+                trend = 0,
+                studyScore = 0,
+                sleepScore = 0,
+                mealsScore = 0,
+                habitsScore = 0,
+                activityScore = 0,
+                goalsScore = 0,
+                note = "No activity logged yet. Schedule events, complete focus sessions, log meals or sleep to calculate your score."
+            )
+        }
+
+        val zone = java.time.ZoneId.systemDefault()
+        val today = java.time.LocalDate.now(zone)
+        val startOfToday = today.atStartOfDay(zone).toInstant().toEpochMilli()
+
+        val current = computeLifeScoreParts(cutoffExclusive = null, day = today)
+        // Same calculation as if today's entries had not happened yet.
+        val startOfDay = computeLifeScoreParts(cutoffExclusive = startOfToday, day = today.minusDays(1))
+
+        // Points added today: how far the score has climbed since midnight.
+        val trend = current.overall - startOfDay.overall
+
+        val note = if (current.overall > 0) {
+            "Current score is ${current.overall}% based on your logged actions today."
         } else {
             "Start logging your day to track your Life Score."
         }
 
         return LifeScoreBreakdown(
-            overallScore = overall,
-            previousWeekScore = 0,
+            overallScore = current.overall,
+            previousWeekScore = startOfDay.overall,
             trend = trend,
-            studyScore = studyScore,
-            sleepScore = sleepScore,
-            mealsScore = mealScore,
-            habitsScore = habitScore,
-            activityScore = activityScore,
-            goalsScore = goalsScore,
+            studyScore = current.study,
+            sleepScore = current.sleep,
+            mealsScore = current.meals,
+            habitsScore = current.habits,
+            activityScore = current.activity,
+            goalsScore = current.goals,
             note = note
         )
     }
@@ -456,6 +502,34 @@ class FioRepository(private val context: Context) {
 
     fun galleryDirectory(): File = galleryDir
 
+    /** Creates a folder; returns false when the name is blank or already used. */
+    fun addGalleryFolder(name: String): Boolean {
+        val clean = name.trim().replace(Regex("\\s+"), " ").take(40)
+        if (clean.isEmpty()) return false
+        val exists = _galleryFolders.value.any { it.equals(clean, ignoreCase = true) } ||
+            _galleryImages.value.any { it.folder.equals(clean, ignoreCase = true) }
+        if (exists) return false
+        _galleryFolders.value = _galleryFolders.value + clean
+        saveGalleryFolders()
+        return true
+    }
+
+    /** Deletes a folder: its photos fall back to Unfiled, the files themselves stay. */
+    fun deleteGalleryFolder(name: String) {
+        _galleryImages.value = _galleryImages.value.map {
+            if (it.folder.equals(name, ignoreCase = true)) it.copy(folder = "") else it
+        }
+        _galleryFolders.value = _galleryFolders.value.filterNot { it.equals(name, ignoreCase = true) }
+        saveGalleryImages()
+        saveGalleryFolders()
+    }
+
+    /** Every folder that exists: persisted ones plus any folder seen on a photo. */
+    fun galleryFolderNames(images: List<GalleryImage> = _galleryImages.value): List<String> {
+        val seen = images.map { it.folder }.filter { it.isNotBlank() }
+        return (_galleryFolders.value + seen).distinctBy { it.lowercase(java.util.Locale.ROOT) }
+    }
+
     fun addGalleryImages(images: List<GalleryImage>) {
         if (images.isEmpty()) return
         _galleryImages.value = images + _galleryImages.value
@@ -467,6 +541,45 @@ class FioRepository(private val context: Context) {
         _galleryImages.value = _galleryImages.value.filterNot { it.id == id }
         saveGalleryImages()
         ioExecutor.execute { runCatching { File(galleryDir, target.fileName).delete() } }
+    }
+
+    /** Moves a stored photo into a folder (empty string = Unfiled). */
+    fun moveGalleryImage(id: String, folder: String) {
+        val clean = folder.trim().take(40)
+        _galleryImages.value = _galleryImages.value.map {
+            if (it.id == id) it.copy(folder = clean) else it
+        }
+        // Moving into a typed name also registers the folder.
+        if (clean.isNotBlank() && !_galleryFolders.value.any { it.equals(clean, ignoreCase = true) }) {
+            _galleryFolders.value = _galleryFolders.value + clean
+            saveGalleryFolders()
+        }
+        saveGalleryImages()
+    }
+
+    /** Bulk delete: removes every selected photo and its file. */
+    fun removeGalleryImages(ids: Set<String>) {
+        if (ids.isEmpty()) return
+        val targets = _galleryImages.value.filter { it.id in ids }
+        _galleryImages.value = _galleryImages.value.filterNot { it.id in ids }
+        saveGalleryImages()
+        ioExecutor.execute {
+            targets.forEach { runCatching { File(galleryDir, it.fileName).delete() } }
+        }
+    }
+
+    /** Bulk move into one folder (empty string = Unfiled). */
+    fun moveGalleryImages(ids: Set<String>, folder: String) {
+        if (ids.isEmpty()) return
+        val clean = folder.trim().take(40)
+        _galleryImages.value = _galleryImages.value.map {
+            if (it.id in ids) it.copy(folder = clean) else it
+        }
+        if (clean.isNotBlank() && !_galleryFolders.value.any { it.equals(clean, ignoreCase = true) }) {
+            _galleryFolders.value = _galleryFolders.value + clean
+            saveGalleryFolders()
+        }
+        saveGalleryImages()
     }
 
     /** Gives a stored photo a custom name (shown in the grid & viewer). */
@@ -492,6 +605,7 @@ class FioRepository(private val context: Context) {
                         fileName = obj.getString("fileName"),
                         displayName = obj.optString("displayName", ""),
                         mimeType = obj.optString("mimeType", "image/*"),
+                        folder = obj.optString("folder", ""),
                         addedAtMillis = obj.optLong("addedAtMillis", currentTimestamp())
                     )
                 )
@@ -500,6 +614,24 @@ class FioRepository(private val context: Context) {
         } catch (e: Exception) {
             emptyList()
         }
+    }
+
+    private fun loadGalleryFolders(): List<String> {
+        val raw = prefs.getString("gallery_folders", null) ?: return emptyList()
+        return try {
+            val array = JSONArray(raw)
+            (0 until array.length()).mapNotNull { i ->
+                array.optString(i).trim().take(40).ifBlank { null }
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun saveGalleryFolders() {
+        val array = JSONArray()
+        for (f in _galleryFolders.value) array.put(f)
+        prefs.edit().putString("gallery_folders", array.toString()).apply()
     }
 
     private fun saveGalleryImages() {
@@ -511,6 +643,7 @@ class FioRepository(private val context: Context) {
                     put("fileName", img.fileName)
                     put("displayName", img.displayName)
                     put("mimeType", img.mimeType)
+                    put("folder", img.folder)
                     put("addedAtMillis", img.addedAtMillis)
                 }
             )
@@ -810,6 +943,24 @@ class FioRepository(private val context: Context) {
         saveAll()
     }
 
+    /** Bulk delete for selected notes. */
+    fun deleteNotes(ids: Set<String>) {
+        if (ids.isEmpty()) return
+        _notes.value = _notes.value.filterNot { it.id in ids }
+        saveAll()
+    }
+
+    /** Bulk filing: moves selected notes into one folder (empty string = Unfiled). */
+    fun moveNotes(ids: Set<String>, folder: String) {
+        if (ids.isEmpty()) return
+        val clean = folder.trim().take(40)
+        _notes.value = _notes.value.map {
+            if (it.id in ids) it.copy(folder = clean) else it
+        }
+        if (clean.isNotBlank()) registerNoteFolder(clean)
+        saveAll()
+    }
+
     /** Auto-register the folder when a note is filed/created into a custom one. */
     private fun registerNoteFolder(name: String) {
         val trimmed = name.trim().take(40)
@@ -963,9 +1114,40 @@ class FioRepository(private val context: Context) {
         saveAll()
     }
 
+    /** Bulk delete for selected tutor practice sessions. */
+    fun deleteTutorSessions(sessionIds: Set<String>) {
+        if (sessionIds.isEmpty()) return
+        _tutorSessions.value = _tutorSessions.value.filterNot { it.id in sessionIds }
+        saveAll()
+    }
+
     // --- Focus Sessions ---
     fun logFocusSession(session: FocusSessionLog) {
         _sessionLogs.value = listOf(session) + _sessionLogs.value
+        saveAll()
+    }
+
+    /** Edits a logged focus session (purpose / course / typed details) after the fact. */
+    fun updateFocusSessionLog(id: String, sectionType: SectionType, courseId: String?, details: String) {
+        val updated = _sessionLogs.value.map { log ->
+            if (log.id == id) {
+                log.copy(
+                    sectionType = sectionType,
+                    courseId = courseId?.takeIf { it.isNotBlank() },
+                    details = details.trim().take(400)
+                )
+            } else log
+        }
+        if (updated != _sessionLogs.value) {
+            _sessionLogs.value = updated
+            saveAll()
+        }
+    }
+
+    /** Bulk delete for selected focus logs. */
+    fun deleteFocusSessionLogs(ids: Set<String>) {
+        if (ids.isEmpty()) return
+        _sessionLogs.value = _sessionLogs.value.filterNot { it.id in ids }
         saveAll()
     }
 
@@ -1238,6 +1420,9 @@ class FioRepository(private val context: Context) {
             obj.put("strikesUsed", sl.strikesUsed)
             obj.put("breaksTaken", sl.breaksTaken)
             obj.put("status", sl.status.name)
+            obj.put("sectionType", sl.sectionType.name)
+            if (sl.courseId != null) obj.put("courseId", sl.courseId)
+            obj.put("details", sl.details)
             obj.put("loggedAtMillis", sl.loggedAtMillis)
             sessionLogsArray.put(obj)
         }
@@ -1288,10 +1473,16 @@ class FioRepository(private val context: Context) {
                     .put("fileName", g.fileName)
                     .put("displayName", g.displayName)
                     .put("mimeType", g.mimeType)
+                    .put("folder", g.folder)
                     .put("addedAtMillis", g.addedAtMillis)
             )
         }
         root.put("gallery", galleryArray)
+
+        // 14b. Gallery folder names (photos above carry the folder they are in).
+        val galleryFoldersArray = JSONArray()
+        for (f in _galleryFolders.value) galleryFoldersArray.put(f)
+        root.put("galleryFolders", galleryFoldersArray)
 
         // 15. In-flight sleep session, so a clone continues an ongoing sleep tracking.
         val pendingSleep = prefs.getLong("sleep_start_timestamp", 0L)
@@ -1785,6 +1976,9 @@ class FioRepository(private val context: Context) {
                             strikesUsed = obj.optInt("strikesUsed", 0),
                             breaksTaken = obj.optInt("breaksTaken", 0),
                             status = try { SessionStatus.valueOf(obj.getString("status")) } catch (e: Exception) { SessionStatus.COMPLETED },
+                            sectionType = try { SectionType.valueOf(obj.optString("sectionType", "STUDY").uppercase(Locale.ROOT)) } catch (e: Exception) { SectionType.STUDY },
+                            courseId = if (obj.has("courseId") && !obj.isNull("courseId")) obj.optString("courseId").ifEmpty { null } else null,
+                            details = obj.optString("details", ""),
                             loggedAtMillis = obj.optLong("loggedAtMillis", currentTimestamp())
                         )
                     )
@@ -1837,6 +2031,7 @@ class FioRepository(private val context: Context) {
                             fileName = obj.getString("fileName"),
                             displayName = obj.optString("displayName", ""),
                             mimeType = obj.optString("mimeType", "image/*"),
+                            folder = obj.optString("folder", ""),
                             addedAtMillis = obj.optLong("addedAtMillis", currentTimestamp())
                         )
                     )
@@ -1844,7 +2039,19 @@ class FioRepository(private val context: Context) {
                 _galleryImages.value =
                     if (merge) mergeRecords(_galleryImages.value, gList, { it.id }, { keep, _ -> keep })
                     else gList
+                // Folder names themselves (older backups just derive them from photos).
+                if (root.has("galleryFolders")) {
+                    val fArr = root.getJSONArray("galleryFolders")
+                    val names = mutableListOf<String>()
+                    for (fIdx in 0 until fArr.length()) {
+                        val clean = fArr.optString(fIdx).trim().take(40)
+                        if (clean.isNotBlank()) names.add(clean)
+                    }
+                    _galleryFolders.value = (_galleryFolders.value + names)
+                        .distinctBy { it.lowercase(Locale.ROOT) }
+                }
                 saveGalleryImages()
+                saveGalleryFolders()
             }
 
             // In-flight sleep session (a clone keeps any running sleep timer)
