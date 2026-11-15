@@ -617,12 +617,15 @@ const CLIP = new URLSearchParams(location.search).has('clip') || location.hash =
 if (CLIP) {
   document.body.classList.remove('solo');
   document.body.classList.add('clip');
-  window.__startClip = () => {
+  // Timing can be overridden (the recorder aligns transitions to the music).
+  window.__startClip = (timing = {}) => {
+    const p2 = Number.isFinite(timing.p2) ? timing.p2 : 5000;   // API key steps
+    const p3 = Number.isFinite(timing.p3) ? timing.p3 : 11500;  // platforms card
     document.body.classList.remove('go', 'p2', 'p3');
     void document.body.offsetWidth; // flush so animations restart cleanly
     document.body.classList.add('go');
-    setTimeout(() => document.body.classList.add('p2'), 5000);  // API key steps
-    setTimeout(() => document.body.classList.add('p3'), 11500); // platforms card
+    setTimeout(() => document.body.classList.add('p2'), p2);
+    setTimeout(() => document.body.classList.add('p3'), p3);
   };
   setTimeout(() => {
     if (!document.body.classList.contains('go')) window.__startClip();
