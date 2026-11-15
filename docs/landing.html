@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fio - Open Source Life Planner</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --card: #1a1d24;
+    --accent: #8b5cf6;
+    --accent-glow: rgba(139, 92, 246, 0.4);
+    --text: #f8fafc;
+    --text-dim: #94a3b8;
+    /* Fio's own app palette, for the phone demo */
+    --app-bg: #0b0b0c;
+    --app-card: #1c1c1f;
+    --app-border: #27272b;
+    --app-text: #e7e7ea;
+    --app-muted: #8e8e96;
+    --mint: #5eead4;
+    --deep: #0f766e;
+    --ok: #4ade80;
+    --warn: #fbbf24;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
+  html, body { overflow-x: hidden; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    position: relative;
+  }
+
+  /* ---- Ambient animation: drifting aurora blobs + floating dust ---- */
+  .aurora {
+    position: fixed;
+    width: 55vmax; height: 55vmax;
+    border-radius: 50%;
+    filter: blur(90px);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .aurora.a {
+    background: radial-gradient(circle, rgba(139,92,246,0.20) 0%, transparent 70%);
+    top: -20%; left: -15%;
+    animation: driftA 26s ease-in-out infinite alternate;
+  }
+  .aurora.b {
+    background: radial-gradient(circle, rgba(94,234,212,0.10) 0%, transparent 70%);
+    bottom: -25%; right: -18%;
+    animation: driftB 32s ease-in-out infinite alternate;
+  }
+  @keyframes driftA { from { transform: translate(0,0) scale(1); } to { transform: translate(18vw, 12vh) scale(1.25); } }
+  @keyframes driftB { from { transform: translate(0,0) scale(1.15); } to { transform: translate(-16vw,-10vh) scale(0.9); } }
+  #dust { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+
+  .wrap { position: relative; z-index: 1; max-width: 1120px; margin: 0 auto; padding: 40px 24px 60px; }
+
+  /* ---- Split hero: living eye (left) + app demo (right) ---- */
+  .split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 48px;
+    align-items: center;
+    min-height: calc(100vh - 120px);
+  }
+  @media (max-width: 920px) {
+    .split { grid-template-columns: 1fr; gap: 28px; min-height: 0; }
+  }
+
+  .left { text-align: center; display: flex; flex-direction: column; align-items: center; }
+  #eye { width: min(300px, 70vw); height: auto; opacity: 0; animation: fadeInUp 1s ease forwards 0.1s; }
+
+  .badge {
+    display: inline-block;
+    background: rgba(139, 92, 246, 0.15);
+    color: var(--accent);
+    padding: 6px 16px;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin: 10px 0 18px;
+    opacity: 0;
+    animation: fadeInUp 0.8s ease forwards 0.5s;
+    border: 1px solid rgba(139, 92, 246, 0.3);
+  }
+  h1 {
+    font-size: clamp(2.6rem, 6vw, 4rem);
+    font-weight: 800;
+    margin-bottom: 10px;
+    opacity: 0;
+    animation: fadeInUp 0.8s ease forwards 0.7s;
+    background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .subtitle {
+    font-size: 1.15rem;
+    color: var(--text-dim);
+    margin-bottom: 22px;
+    opacity: 0;
+    animation: fadeInUp 0.8s ease forwards 0.9s;
+  }
+  .pills {
+    display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;
+    margin-bottom: 28px; opacity: 0; animation: fadeInUp 0.8s ease forwards 1.05s;
+  }
+  .pill {
+    background: var(--card); border: 1px solid rgba(255,255,255,0.07);
+    color: var(--text-dim); font-size: 0.8rem; font-weight: 600;
+    padding: 7px 14px; border-radius: 20px;
+  }
+  .cta { opacity: 0; animation: fadeInUp 0.8s ease forwards 1.2s; display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+  .btn {
+    background: var(--accent); color: white; text-decoration: none;
+    padding: 13px 30px; border-radius: 30px; font-weight: 600; font-size: 1rem;
+    transition: transform 0.2s, box-shadow 0.2s; display: inline-block;
+  }
+  .btn:hover { transform: translateY(-2px); box-shadow: 0 10px 25px var(--accent-glow); }
+  .btn.ghost { background: transparent; border: 1px solid rgba(255,255,255,0.18); color: var(--text); }
+  .btn.ghost:hover { border-color: var(--accent); box-shadow: none; }
+
+  /* ---- Phone mockup --------------------------------------------
+     The device is built at a FIXED 320×660 and scaled as a whole,
+     so every screen inside always lays out identically, whatever
+     the viewport is. */
+  .right { display: flex; justify-content: center; align-items: center; opacity: 0; transform: translateY(24px); animation: fadeInUp 0.9s ease forwards 0.55s; }
+  .stage { position: relative; }
+  .phone {
+    position: relative;
+    width: 320px; height: 660px;
+    background: var(--app-bg);
+    border: 1px solid #2a2a30;
+    border-radius: 42px;
+    box-shadow: 0 30px 80px rgba(0,0,0,0.55), 0 0 60px rgba(139,92,246,0.12);
+    overflow: hidden;
+  }
+  .notch {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    width: 100px; height: 24px; background: #000; border-radius: 12px; z-index: 5;
+  }
+  .statusbar {
+    position: absolute; top: 0; left: 0; right: 0; height: 42px; z-index: 4;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 22px; font-size: 0.7rem; color: var(--app-text); font-weight: 600;
+  }
+  .statusbar .r { display: flex; gap: 5px; align-items: center; }
+  .sig { width: 15px; height: 9px; background: linear-gradient(to right, var(--app-text) 20%, transparent 20% 40%, var(--app-text) 40% 60%, transparent 60% 80%, var(--app-text) 80%); border-radius: 2px; }
+  .batt { width: 20px; height: 10px; border: 1px solid var(--app-muted); border-radius: 3px; position: relative; }
+  .batt::before { content: ''; position: absolute; inset: 1.5px; right: 4px; background: var(--ok); border-radius: 2px; }
+
+  .screens { position: absolute; inset: 42px 0 28px 0; }
+  .scr {
+    position: absolute; inset: 0; padding: 13px 14px 8px;
+    display: flex; flex-direction: column; gap: 9px;
+    opacity: 0; transform: translateX(46px);
+    transition: opacity 0.45s ease, transform 0.45s ease;
+    pointer-events: none;
+  }
+  .scr.active { opacity: 1; transform: none; }
+
+  .dots { position: absolute; bottom: 9px; left: 0; right: 0; display: flex; gap: 6px; justify-content: center; z-index: 4; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: #3a3a40; transition: background 0.3s, width 0.3s; }
+  .dot.on { background: var(--mint); width: 16px; border-radius: 4px; }
+
+  /* Floating callouts around the phone */
+  .float {
+    position: absolute; z-index: 6;
+    background: var(--card); border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 14px; padding: 9px 14px; font-size: 0.78rem; font-weight: 700;
+    box-shadow: 0 14px 34px rgba(0,0,0,0.5);
+    animation: floaty 5s ease-in-out infinite;
+    white-space: nowrap;
+  }
+  .float.f1 { top: 13%; right: -16px; color: var(--ok); animation-delay: 0.4s; }
+  .float.f2 { bottom: 19%; left: -18px; color: var(--warn); animation-delay: 1.6s; }
+  @keyframes floaty { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-9px); } }
+  @media (max-width: 920px) { .float { display: none !important; } }
+
+  /* ---- Shared app-UI pieces (tuned for the 320px screen) ---- */
+  .scr-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px; }
+  .scr-title { font-size: 1.12rem; font-weight: 800; color: var(--app-text); }
+  .tag { font-size: 0.62rem; font-weight: 700; padding: 4px 9px; border-radius: 12px; background: var(--app-card); color: var(--app-muted); border: 1px solid var(--app-border); white-space: nowrap; }
+  .tag.mint { background: rgba(94,234,212,0.12); color: var(--mint); border-color: rgba(94,234,212,0.3); }
+  .tag.ok { background: rgba(74,222,128,0.12); color: var(--ok); border-color: rgba(74,222,128,0.3); }
+  .card { background: var(--app-card); border: 1px solid var(--app-border); border-radius: 15px; padding: 11px; }
+
+  /* Dashboard */
+  .score-row { display: flex; align-items: center; gap: 12px; }
+  .ring { position: relative; width: 88px; height: 88px; flex-shrink: 0; }
+  .ring svg { transform: rotate(-90deg); display: block; }
+  .ring circle { fill: none; stroke-width: 7; stroke-linecap: round; }
+  .ring .bgc { stroke: #26262b; }
+  .ring .fgc { stroke: var(--mint); stroke-dasharray: 251.3; stroke-dashoffset: 251.3; transition: stroke-dashoffset 1.4s cubic-bezier(0.3, 0.7, 0.3, 1) 0.35s; }
+  .scr.active .ring .fgc { stroke-dashoffset: 65.3; }
+  .ring .num { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .ring .num b { font-size: 1.3rem; color: var(--app-text); }
+  .ring .num span { font-size: 0.52rem; color: var(--app-muted); }
+  .score-side { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+  .score-side .lab { font-size: 0.68rem; color: var(--app-muted); line-height: 1.45; }
+  .delta { font-size: 0.74rem; font-weight: 800; color: var(--ok); background: rgba(74,222,128,0.1); border: 1px solid rgba(74,222,128,0.28); padding: 5px 11px; border-radius: 14px; width: max-content; opacity: 0; transform: translateY(6px); }
+  .scr.active .delta { animation: popIn 0.5s ease forwards 1.5s; }
+  .stats3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .stat { background: var(--app-card); border: 1px solid var(--app-border); border-radius: 12px; padding: 9px 4px; text-align: center; opacity: 0; transform: translateY(8px); }
+  .scr.active .stat { animation: popIn 0.5s ease forwards; }
+  .scr.active .stat:nth-child(1) { animation-delay: 0.55s; }
+  .scr.active .stat:nth-child(2) { animation-delay: 0.7s; }
+  .scr.active .stat:nth-child(3) { animation-delay: 0.85s; }
+  .stat b { display: block; font-size: 0.94rem; color: var(--app-text); }
+  .stat span { font-size: 0.56rem; color: var(--app-muted); }
+  .hrow { display: flex; align-items: center; gap: 10px; padding: 7px 2px; }
+  .hrow + .hrow { border-top: 1px solid #222226; }
+  .hmain { flex: 1; min-width: 0; }
+  .hmain b { font-size: 0.78rem; color: var(--app-text); display: block; }
+  .hmain span { font-size: 0.62rem; color: var(--app-muted); }
+  .hcheck { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid #3a3a40; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: transparent; font-size: 0.7rem; }
+  .hrow.done .hcheck { background: var(--mint); border-color: var(--mint); color: #06251f; }
+  .scr.active .hrow.done .hcheck { animation: checkPop 0.5s cubic-bezier(0.3, 1.6, 0.5, 1) both; }
+  .scr.active .hrow.done:nth-of-type(1) .hcheck { animation-delay: 1.9s; }
+  .scr.active .hrow.done:nth-of-type(2) .hcheck { animation-delay: 2.35s; }
+  .scr.active .hrow.done:nth-of-type(3) .hcheck { animation-delay: 2.8s; }
+  .scr.active .hrow.done:nth-of-type(4) .hcheck { animation-delay: 3.25s; }
+
+  /* Focus */
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { font-size: 0.62rem; font-weight: 700; padding: 5px 10px; border-radius: 13px; background: var(--app-card); color: var(--app-muted); border: 1px solid var(--app-border); }
+  .chip.sel { background: rgba(94,234,212,0.12); color: var(--mint); border-color: rgba(94,234,212,0.35); }
+  .timer-wrap { text-align: center; padding: 14px 0 4px; }
+  .live { font-size: 2.7rem; font-weight: 800; color: var(--app-text); font-variant-numeric: tabular-nums; letter-spacing: 1px; }
+  .pulse { width: max-content; margin: 7px auto 0; font-size: 0.56rem; font-weight: 800; letter-spacing: 1.2px; color: var(--mint); background: rgba(94,234,212,0.1); border: 1px solid rgba(94,234,212,0.3); padding: 4px 10px; border-radius: 12px; animation: softPulse 2.2s ease-in-out infinite; }
+  @keyframes softPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.55; } }
+  .tbtns { display: flex; gap: 8px; justify-content: center; margin-top: 4px; }
+  .tbtn { font-size: 0.68rem; font-weight: 700; padding: 8px 15px; border-radius: 12px; background: var(--app-card); color: var(--app-text); border: 1px solid var(--app-border); }
+  .tbtn.warn { color: var(--warn); border-color: rgba(251,191,36,0.3); }
+  .break-note { text-align: center; font-size: 0.6rem; color: var(--app-muted); }
+
+  /* Habits */
+  .hbar { height: 7px; border-radius: 4px; background: #26262b; overflow: hidden; margin-top: 2px; }
+  .hbar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--deep), var(--mint)); border-radius: 4px; transition: width 1.2s cubic-bezier(0.3, 0.7, 0.3, 1) 0.5s; }
+  .scr.active .hbar i { width: 67%; }
+
+  /* Tutor */
+  .msgs { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; }
+  .msg { max-width: 88%; padding: 8px 11px; border-radius: 13px; font-size: 0.68rem; line-height: 1.45; opacity: 0; transform: translateY(8px); transition: opacity 0.4s ease, transform 0.4s ease; }
+  .msg.show { opacity: 1; transform: none; }
+  .msg.user { align-self: flex-end; background: var(--deep); color: #eafffb; border-bottom-right-radius: 4px; }
+  .msg.me { align-self: flex-end; background: #26262b; color: var(--app-text); border-bottom-right-radius: 4px; }
+  .tutor-card { background: var(--app-card); border: 1px solid var(--app-border); border-radius: 13px; padding: 10px 11px; align-self: stretch; opacity: 0; transform: translateY(8px); transition: opacity 0.45s ease, transform 0.45s ease; }
+  .tutor-card.show { opacity: 1; transform: none; }
+  .tc-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; }
+  .tc-head b { font-size: 0.68rem; color: var(--app-text); }
+  .score-b { font-size: 0.66rem; font-weight: 800; color: var(--ok); }
+  .tc-line { font-size: 0.62rem; color: var(--app-muted); line-height: 1.5; }
+  .weak { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 7px; }
+  .weak span { font-size: 0.56rem; font-weight: 700; color: var(--warn); background: rgba(251,191,36,0.09); border: 1px solid rgba(251,191,36,0.25); padding: 3px 8px; border-radius: 10px; }
+  .caret { display: inline-block; width: 6px; height: 11px; background: var(--mint); vertical-align: -2px; margin-left: 2px; animation: softPulse 1s steps(2) infinite; }
+
+  /* Gallery — real photos */
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .tile { aspect-ratio: 1; border-radius: 12px; overflow: hidden; position: relative; opacity: 0; transform: scale(0.7); }
+  .tile:nth-child(1) { background: linear-gradient(135deg, #134e4a, #0f766e); animation-delay: 0.4s !important; }
+  .tile:nth-child(2) { background: linear-gradient(135deg, #3b2a6b, #8b5cf6); animation-delay: 0.52s !important; }
+  .tile:nth-child(3) { background: linear-gradient(135deg, #7c2d12, #f59e0b); animation-delay: 0.64s !important; }
+  .tile:nth-child(4) { background: linear-gradient(135deg, #164e63, #22d3ee); animation-delay: 0.76s !important; }
+  .scr.active .tile { animation: tilePop 0.45s cubic-bezier(0.3, 1.4, 0.5, 1) forwards; }
+  .tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .tile .pick {
+    position: absolute; top: 6px; left: 6px; width: 21px; height: 21px; border-radius: 50%;
+    background: var(--mint); color: #06251f; display: flex; align-items: center; justify-content: center;
+    font-size: 0.62rem; opacity: 0; transform: scale(0.4);
+  }
+  .scr.active .tile.picked .pick { animation: checkPop 0.4s cubic-bezier(0.3, 1.6, 0.5, 1) forwards 1.6s; }
+
+  /* Settings · the API-key flow */
+  .link {
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(94,234,212,0.08); border: 1px solid rgba(94,234,212,0.3);
+    color: var(--mint); font-size: 0.66rem; font-weight: 700;
+    padding: 9px 11px; border-radius: 12px;
+  }
+  .link .ext { margin-left: auto; opacity: 0.7; }
+  .link.hl { animation: linkPulse 1.1s ease 2; }
+  @keyframes linkPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(94,234,212,0.55); } 50% { box-shadow: 0 0 0 8px rgba(94,234,212,0); } }
+  .keyfield {
+    font-family: Consolas, monospace; font-size: 0.78rem; color: var(--app-text);
+    background: #141416; border: 1px solid var(--app-border); border-radius: 10px;
+    padding: 9px 11px; letter-spacing: 2px; min-height: 36px;
+  }
+  .aiok {
+    font-size: 0.66rem; font-weight: 800; color: var(--ok);
+    background: rgba(74,222,128,0.12); border: 1px solid rgba(74,222,128,0.3);
+    padding: 8px 13px; border-radius: 12px;
+    opacity: 0; transform: scale(0.6);
+    transition: opacity 0.35s cubic-bezier(0.3, 1.6, 0.5, 1), transform 0.35s cubic-bezier(0.3, 1.6, 0.5, 1);
+  }
+  .aiok.show { opacity: 1; transform: scale(1); }
+  .toast { font-size: 0.6rem; color: var(--app-muted); text-align: center; opacity: 0; transition: opacity 0.4s ease; }
+  .toast.show { opacity: 1; }
+
+  @keyframes popIn { to { opacity: 1; transform: none; } }
+  @keyframes tilePop { to { opacity: 1; transform: scale(1); } }
+  @keyframes checkPop {
+    0% { transform: scale(0.2); }
+    70% { transform: scale(1.25); }
+    100% { transform: scale(1); }
+  }
+
+  /* ---- API key steps ---- */
+  .api-section {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 20px;
+    padding: 30px;
+    text-align: left;
+    max-width: 640px;
+    margin: 40px auto 0;
+    opacity: 0;
+    animation: fadeInUp 1s ease forwards 1.5s;
+  }
+  .api-section h3 { margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+  .step {
+    display: flex; align-items: center; gap: 15px; margin-bottom: 15px;
+    color: var(--text-dim); font-size: 0.95rem;
+    opacity: 0; animation: fadeInRight 0.6s ease forwards;
+  }
+  .step:nth-child(2) { animation-delay: 1.7s; }
+  .step:nth-child(3) { animation-delay: 1.9s; }
+  .step:nth-child(4) { animation-delay: 2.1s; }
+  .step:nth-child(5) { animation-delay: 2.3s; }
+  .step-num {
+    background: var(--accent); color: white; width: 28px; height: 28px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.8rem; flex-shrink: 0;
+  }
+  .code-block {
+    background: #000; padding: 12px; border-radius: 8px; font-family: monospace;
+    font-size: 0.85rem; color: #4ade80; margin-top: 10px; border: 1px solid #333;
+  }
+
+  footer {
+    margin-top: 34px; text-align: center; color: var(--text-dim); font-size: 0.78rem;
+    opacity: 0; animation: fadeInUp 0.8s ease forwards 2.6s;
+  }
+
+  @keyframes fadeInUp { to { opacity: 1; transform: translateY(0); } }
+  @keyframes fadeInRight { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
+
+  /* ---- Solo mode: phone-only, for recording video ---- */
+  body.solo .left { display: none; }
+  body.solo .split { grid-template-columns: 1fr; min-height: 100vh; }
+  body.solo .api-section, body.solo footer { display: none; }
+  body.solo .wrap { padding: 24px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; opacity: 1 !important; transform: none !important; }
+    .scr { opacity: 0 !important; }
+    .scr.active { opacity: 1 !important; }
+    .ring .fgc { stroke-dashoffset: 65.3 !important; }
+    .hbar i { width: 67% !important; }
+  }
+</style>
+</head>
+<body>
+  <div class="aurora a"></div>
+  <div class="aurora b"></div>
+  <canvas id="dust"></canvas>
+
+  <div class="wrap">
+    <section class="split">
+      <!-- Left: the living eye -->
+      <div class="left">
+        <canvas id="eye" width="480" height="340" aria-label="The Fio eye, blinking"></canvas>
+        <div class="badge">✨ 100% Free &amp; Open Source</div>
+        <h1>Fio</h1>
+        <p class="subtitle">The life planner you actually own. No subscriptions.</p>
+        <div class="pills">
+          <span class="pill">🎯 Focus timer</span>
+          <span class="pill">🔥 Habit tracker</span>
+          <span class="pill">📝 Notes</span>
+          <span class="pill">🤖 AI Tutor</span>
+          <span class="pill">🖼️ Gallery</span>
+        </div>
+        <div class="cta">
+          <a href="https://github.com/emf187/fio" target="_blank" class="btn">View Code on GitHub</a>
+          <a href="https://github.com/emf187/fio#readme" target="_blank" class="btn ghost">Get the app</a>
+        </div>
+      </div>
+
+      <!-- Right: the app in use -->
+      <div class="right">
+        <div class="stage" id="stage">
+          <div class="float f1">+28 today</div>
+          <div class="float f2">🔥 21-day streak</div>
+          <div class="phone">
+            <div class="notch"></div>
+            <div class="statusbar">
+              <span>9:41</span>
+              <span class="r"><span class="sig"></span><span class="batt"></span></span>
+            </div>
+
+            <div class="screens">
+              <!-- 1 · Dashboard -->
+              <div class="scr" id="s0">
+                <div class="scr-head"><span class="scr-title">Today</span><span class="tag">Sun, Nov 15</span></div>
+                <div class="card score-row">
+                  <div class="ring">
+                    <svg viewBox="0 0 96 96" width="88" height="88">
+                      <circle class="bgc" cx="48" cy="48" r="40"></circle>
+                      <circle class="fgc" cx="48" cy="48" r="40"></circle>
+                    </svg>
+                    <div class="num"><b>74</b><span>Life Score</span></div>
+                  </div>
+                  <div class="score-side">
+                    <span class="lab">Trending up — habits, focus and consistency.</span>
+                    <span class="delta">+28 today</span>
+                  </div>
+                </div>
+                <div class="stats3">
+                  <div class="stat"><b>125m</b><span>Focus</span></div>
+                  <div class="stat"><b>4/6</b><span>Habits</span></div>
+                  <div class="stat"><b>21</b><span>Best streak</span></div>
+                </div>
+                <div class="card">
+                  <div class="hrow done"><div class="hmain"><b>Read 20 pages</b><span>14-day streak</span></div><div class="hcheck">✓</div></div>
+                  <div class="hrow done"><div class="hmain"><b>Gym</b><span>9-day streak</span></div><div class="hcheck">✓</div></div>
+                  <div class="hrow done"><div class="hmain"><b>Journal</b><span>31-day streak</span></div><div class="hcheck">✓</div></div>
+                  <div class="hrow"><div class="hmain"><b>Meditate</b><span>tap when done</span></div><div class="hcheck"></div></div>
+                </div>
+              </div>
+
+              <!-- 2 · Settings: the API-key flow -->
+              <div class="scr" id="s5">
+                <div class="scr-head"><span class="scr-title">Settings</span><span class="tag">AI assistant</span></div>
+                <div class="chips">
+                  <span class="chip sel">Google Gemini</span><span class="chip">OpenRouter</span>
+                </div>
+                <div class="link" id="klink">🔑 Get a free Gemini key<span class="ext">↗</span></div>
+                <div class="card">
+                  <div class="tc-head" style="margin-bottom:7px">
+                    <b style="font-size:0.66rem;color:var(--app-text)">API key</b>
+                    <span class="tag" style="font-size:0.54rem">stays on this device</span>
+                  </div>
+                  <div class="keyfield" id="kfield"></div>
+                  <div class="tbtns" style="margin-top:9px">
+                    <span class="tbtn" style="color:var(--mint);border-color:rgba(94,234,212,0.35)">Test connection</span>
+                    <span class="aiok" id="kok">Working ✓</span>
+                  </div>
+                </div>
+                <div class="toast" id="ktoast">Saved · the Tutor can now grade your answers</div>
+                <div class="card" style="margin-top:auto">
+                  <div class="hrow"><div class="hmain"><b>Tutor</b><span>ready to grade</span></div><span style="width:9px;height:9px;border-radius:50%;background:var(--ok);flex-shrink:0"></span></div>
+                </div>
+              </div>
+
+              <!-- 2 · Focus -->
+              <div class="scr" id="s1">
+                <div class="scr-head"><span class="scr-title">Focus</span><span class="tag mint">FOCUSING</span></div>
+                <div class="chips">
+                  <span class="chip sel">📖 Study</span><span class="chip">🎮 Leisure</span><span class="chip">🔬 Research</span>
+                </div>
+                <div class="chips"><span class="chip">CS201 · Algorithms</span></div>
+                <div class="timer-wrap">
+                  <div class="live" id="ftimer">24:58</div>
+                  <div class="pulse">DEEP WORK · KEEPS COUNTING IF YOU LEAVE</div>
+                </div>
+                <div class="tbtns">
+                  <span class="tbtn">1× Pause</span>
+                  <span class="tbtn warn">Stop</span>
+                </div>
+                <div class="break-note">Next break in 22 min · 10 min long</div>
+                <div class="card" style="margin-top:auto">
+                  <div class="hrow"><div class="hmain"><b>This week</b><span>minutes focused</span></div><b style="color:var(--mint)">412m</b></div>
+                </div>
+              </div>
+
+              <!-- 3 · Habits -->
+              <div class="scr" id="s2">
+                <div class="scr-head"><span class="scr-title">Habits</span><span class="tag ok">4/6 today</span></div>
+                <div class="card">
+                  <div class="hrow done"><div class="hmain"><b>Read 20 pages</b><span>🔥 14-day streak</span></div><div class="hcheck">✓</div></div>
+                  <div class="hrow done"><div class="hmain"><b>Gym</b><span>🔥 9-day streak</span></div><div class="hcheck">✓</div></div>
+                  <div class="hrow done"><div class="hmain"><b>Journal</b><span>🔥 31-day streak</span></div><div class="hcheck">✓</div></div>
+                  <div class="hrow done"><div class="hmain"><b>No sugar</b><span>🔥 6-day streak</span></div><div class="hcheck">✓</div></div>
+                  <div class="hrow"><div class="hmain"><b>Meditate</b><span>tonight</span></div><div class="hcheck"></div></div>
+                </div>
+                <div class="card">
+                  <div class="tc-head"><b>Week progress</b><span style="font-size:0.66rem;color:var(--app-muted)">67%</span></div>
+                  <div class="hbar"><i></i></div>
+                  <div class="tc-line" style="margin-top:7px">Feeds your Life Score — 45% of it comes from habits.</div>
+                </div>
+              </div>
+
+              <!-- 4 · Tutor -->
+              <div class="scr" id="s3">
+                <div class="scr-head"><span class="scr-title">Tutor</span><span class="tag">Gemini</span></div>
+                <div class="msgs">
+                  <div class="msg user"><span id="tq"></span><span class="caret"></span></div>
+                  <div class="msg me" id="ta">It recomputes the same calls over and over — I should memoize with a map.</div>
+                  <div class="tutor-card" id="tt">
+                    <div class="tc-head"><b>Tutor feedback</b><span class="score-b">86/100</span></div>
+                    <div class="tc-line">Right instinct. Memoization cuts it from O(2ⁿ) to O(n) — mention the recursion depth limit too.</div>
+                    <div class="weak"><span>Recursion</span><span>Big-O</span><span>Memoization</span></div>
+                  </div>
+                </div>
+                <div class="break-note">Weak topics tracked → your revision plan updates</div>
+              </div>
+
+              <!-- 5 · Gallery -->
+              <div class="scr" id="s4">
+                <div class="scr-head"><span class="scr-title">Gallery</span><span class="tag">3 folders</span></div>
+                <div class="chips">
+                  <span class="chip sel">All 12</span><span class="chip">Anatomy 5</span><span class="chip">Past papers 4</span><span class="chip">Unfiled 3</span>
+                </div>
+                <div class="grid2">
+                  <div class="tile picked"><img src="data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20220%20220%22%3E%3Crect%20width%3D%22220%22%20height%3D%22220%22%20fill%3D%22%23f5efdf%22%2F%3E%3Cg%20stroke%3D%22%23e6dcc2%22%20stroke-width%3D%221%22%3E%3Cline%20x1%3D%2214%22%20y1%3D%2230%22%20x2%3D%22206%22%20y2%3D%2230%22%2F%3E%3Cline%20x1%3D%2214%22%20y1%3D%2249%22%20x2%3D%22206%22%20y2%3D%2249%22%2F%3E%3Cline%20x1%3D%2214%22%20y1%3D%2268%22%20x2%3D%22206%22%20y2%3D%2268%22%2F%3E%3Cline%20x1%3D%2214%22%20y1%3D%2287%22%20x2%3D%22206%22%20y2%3D%2287%22%2F%3E%3Cline%20x1%3D%2214%22%20y1%3D%22106%22%20x2%3D%22206%22%20y2%3D%22106%22%2F%3E%3Cline%20x1%3D%2214%22%20y1%3D%22125%22%20x2%3D%22206%22%20y2%3D%22125%22%2F%3E%3Cline%20x1%3D%2214%22%20y1%3D%22144%22%20x2%3D%22206%22%20y2%3D%22144%22%2F%3E%3Cline%20x1%3D%2214%22%20y1%3D%22163%22%20x2%3D%22206%22%20y2%3D%22163%22%2F%3E%3Cline%20x1%3D%2214%22%20y1%3D%22182%22%20x2%3D%22206%22%20y2%3D%22182%22%2F%3E%3Cline%20x1%3D%2214%22%20y1%3D%22201%22%20x2%3D%22206%22%20y2%3D%22201%22%2F%3E%3C%2Fg%3E%3Cline%20x1%3D%2234%22%20y1%3D%2210%22%20x2%3D%2234%22%20y2%3D%22212%22%20stroke%3D%22%23e26d5c%22%20stroke-width%3D%221.4%22%20opacity%3D%220.7%22%2F%3E%3Cpath%20d%3D%22M112%20158%20C%2050%20114%2C%2062%2050%2C%20112%2084%20C%20162%2050%2C%20174%20114%2C%20112%20158%20Z%22%20fill%3D%22%23c0392b%22%2F%3E%3Cpath%20d%3D%22M112%2084%20C%20102%2064%2C%20124%2056%2C%20132%2066%20L%20134%2050%22%20stroke%3D%22%238e2b20%22%20stroke-width%3D%227%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%2F%3E%3Cpath%20d%3D%22M96%20100%20L%2074%2088%20M128%20104%20L%20152%2096%22%20stroke%3D%22%238e2b20%22%20stroke-width%3D%225%22%20stroke-linecap%3D%22round%22%2F%3E%3Cg%20stroke%3D%22%2357534e%22%20stroke-width%3D%221%22%20font-family%3D%22Segoe%20UI%2C%20sans-serif%22%20font-size%3D%229%22%20fill%3D%22%2357534e%22%3E%3Cline%20x1%3D%22150%22%20y1%3D%2260%22%20x2%3D%22184%22%20y2%3D%2252%22%2F%3E%3Ctext%20x%3D%22158%22%20y%3D%2248%22%3Eaorta%3C%2Ftext%3E%3Cline%20x1%3D%2280%22%20y1%3D%22128%22%20x2%3D%2246%22%20y2%3D%22140%22%2F%3E%3Ctext%20x%3D%2222%22%20y%3D%22150%22%3Eleft%3C%2Ftext%3E%3C%2Fg%3E%3Ctext%20x%3D%22132%22%20y%3D%22176%22%20font-family%3D%22Segoe%20UI%2C%20sans-serif%22%20font-size%3D%2210%22%20fill%3D%22%237c6f5a%22%20font-style%3D%22italic%22%3EFig.%204%20%E2%80%94%20circulation%3C%2Ftext%3E%3Cdefs%3E%3CradialGradient%20id%3D%22vg%22%20cx%3D%2250%25%22%20cy%3D%2242%25%22%20r%3D%2280%25%22%3E%3Cstop%20offset%3D%220.55%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220.22%22%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22220%22%20height%3D%22220%22%20fill%3D%22url(%23vg)%22%2F%3E%3C%2Fsvg%3E" alt="Anatomy notes" onerror="this.remove()"><div class="pick">✓</div></div>
+                  <div class="tile"><img src="data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20220%20220%22%3E%3Crect%20width%3D%22220%22%20height%3D%22220%22%20fill%3D%22%23fffdf6%22%2F%3E%3Cg%20stroke%3D%22%23dce4f0%22%20stroke-width%3D%221%22%3E%3Cline%20x1%3D%2210%22%20y1%3D%2234%22%20x2%3D%22210%22%20y2%3D%2234%22%2F%3E%3Cline%20x1%3D%2210%22%20y1%3D%2253%22%20x2%3D%22210%22%20y2%3D%2253%22%2F%3E%3Cline%20x1%3D%2210%22%20y1%3D%2272%22%20x2%3D%22210%22%20y2%3D%2272%22%2F%3E%3Cline%20x1%3D%2210%22%20y1%3D%2291%22%20x2%3D%22210%22%20y2%3D%2291%22%2F%3E%3Cline%20x1%3D%2210%22%20y1%3D%22110%22%20x2%3D%22210%22%20y2%3D%22110%22%2F%3E%3Cline%20x1%3D%2210%22%20y1%3D%22129%22%20x2%3D%22210%22%20y2%3D%22129%22%2F%3E%3Cline%20x1%3D%2210%22%20y1%3D%22148%22%20x2%3D%22210%22%20y2%3D%22148%22%2F%3E%3Cline%20x1%3D%2210%22%20y1%3D%22167%22%20x2%3D%22210%22%20y2%3D%22167%22%2F%3E%3Cline%20x1%3D%2210%22%20y1%3D%22186%22%20x2%3D%22210%22%20y2%3D%22186%22%2F%3E%3Cline%20x1%3D%2210%22%20y1%3D%22205%22%20x2%3D%22210%22%20y2%3D%22205%22%2F%3E%3C%2Fg%3E%3Cline%20x1%3D%2230%22%20y1%3D%228%22%20x2%3D%2230%22%20y2%3D%22214%22%20stroke%3D%22%23f0a5a0%22%20stroke-width%3D%221.4%22%20opacity%3D%220.8%22%2F%3E%3Ctext%20x%3D%2240%22%20y%3D%2262%22%20font-family%3D%22Comic%20Sans%20MS%2C%20Segoe%20Script%2C%20cursive%22%20font-size%3D%2215%22%20fill%3D%22%231d4ed8%22%3E%E2%88%AB%20x%C2%B2%20dx%20%3D%20x%C2%B3%2F3%20%2B%20C%3C%2Ftext%3E%3Cpath%20d%3D%22M40%2072%20q%2030%206%2096%202%22%20stroke%3D%22%231d4ed8%22%20stroke-width%3D%221.6%22%20fill%3D%22none%22%2F%3E%3Ctext%20x%3D%2240%22%20y%3D%22104%22%20font-family%3D%22Comic%20Sans%20MS%2C%20Segoe%20Script%2C%20cursive%22%20font-size%3D%2212%22%20fill%3D%22%23312e81%22%3Earea%20under%20curve%20%E2%86%92%3C%2Ftext%3E%3Cpath%20d%3D%22M40%20118%20q%2044%20-8%2088%20-2%20q%2030%204%2052%20-4%22%20stroke%3D%22%23312e81%22%20stroke-width%3D%221.4%22%20fill%3D%22none%22%2F%3E%3Cg%20stroke%3D%22%23334155%22%20stroke-width%3D%221.2%22%20fill%3D%22none%22%3E%3Cpath%20d%3D%22M140%20150%20h%2052%20M148%20142%20v%2058%22%2F%3E%3Cpath%20d%3D%22M148%20196%20C%20160%20168%2C%20176%20158%2C%20190%20150%22%2F%3E%3C%2Fg%3E%3Cpath%20d%3D%22M40%20148%20q%2026%20-10%2052%200%20t%2052%200%22%20stroke%3D%22%231d4ed8%22%20stroke-width%3D%221.4%22%20fill%3D%22none%22%2F%3E%3Cdefs%3E%3CradialGradient%20id%3D%22vg%22%20cx%3D%2250%25%22%20cy%3D%2242%25%22%20r%3D%2280%25%22%3E%3Cstop%20offset%3D%220.55%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220.22%22%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22220%22%20height%3D%22220%22%20fill%3D%22url(%23vg)%22%2F%3E%3C%2Fsvg%3E" alt="Calculus notes" onerror="this.remove()"></div>
+                  <div class="tile"><img src="data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20220%20220%22%3E%3Crect%20width%3D%22220%22%20height%3D%22220%22%20fill%3D%22%23d7dde5%22%2F%3E%3Crect%20x%3D%2210%22%20y%3D%2210%22%20width%3D%22200%22%20height%3D%22176%22%20rx%3D%226%22%20fill%3D%22%23f2f5f9%22%20stroke%3D%22%23aab3bf%22%20stroke-width%3D%225%22%2F%3E%3Crect%20x%3D%2270%22%20y%3D%22192%22%20width%3D%2280%22%20height%3D%227%22%20rx%3D%223.5%22%20fill%3D%22%239aa3ae%22%2F%3E%3Ctext%20x%3D%2222%22%20y%3D%2246%22%20font-family%3D%22Segoe%20UI%2C%20sans-serif%22%20font-weight%3D%22600%22%20font-size%3D%2213%22%20fill%3D%22%232563eb%22%3Efib(n)%20%3D%20fib(n%E2%88%921)%20%2B%20fib(n%E2%88%922)%3C%2Ftext%3E%3Ctext%20x%3D%2222%22%20y%3D%2280%22%20font-family%3D%22Segoe%20UI%2C%20sans-serif%22%20font-weight%3D%22700%22%20font-size%3D%2215%22%20fill%3D%22%23111827%22%3EO(2%E2%81%BF)%20%E2%86%92%20O(n)%3C%2Ftext%3E%3Cpath%20d%3D%22M22%2088%20H%20132%22%20stroke%3D%22%23dc2626%22%20stroke-width%3D%222.5%22%20stroke-linecap%3D%22round%22%2F%3E%3Cg%20stroke%3D%22%23334155%22%20stroke-width%3D%221.3%22%3E%3Cpath%20d%3D%22M96%20108%20L%2068%20132%20M96%20108%20L%20124%20132%20M68%20132%20L%2052%20156%20M68%20132%20L%2084%20156%20M124%20132%20L%20108%20156%20M124%20132%20L%20140%20156%22%2F%3E%3C%2Fg%3E%3Cg%20fill%3D%22%23fff%22%20stroke%3D%22%23334155%22%20stroke-width%3D%221.3%22%20font-family%3D%22Segoe%20UI%2C%20sans-serif%22%20font-size%3D%229%22%20fill-opacity%3D%221%22%3E%3Ccircle%20cx%3D%2296%22%20cy%3D%22106%22%20r%3D%229%22%2F%3E%3Ctext%20x%3D%2292%22%20y%3D%22109%22%20stroke%3D%22none%22%20fill%3D%22%23334155%22%3En%3C%2Ftext%3E%3Ccircle%20cx%3D%2268%22%20cy%3D%22134%22%20r%3D%229%22%2F%3E%3Ctext%20x%3D%2264%22%20y%3D%22137%22%20stroke%3D%22none%22%20fill%3D%22%23334155%22%3En-1%3C%2Ftext%3E%3Ccircle%20cx%3D%22124%22%20cy%3D%22134%22%20r%3D%229%22%2F%3E%3Ctext%20x%3D%22120%22%20y%3D%22137%22%20stroke%3D%22none%22%20fill%3D%22%23334155%22%3En-2%3C%2Ftext%3E%3Ccircle%20cx%3D%2252%22%20cy%3D%22158%22%20r%3D%228%22%2F%3E%3Ccircle%20cx%3D%2284%22%20cy%3D%22158%22%20r%3D%228%22%2F%3E%3Ccircle%20cx%3D%22108%22%20cy%3D%22158%22%20r%3D%228%22%2F%3E%3Ccircle%20cx%3D%22140%22%20cy%3D%22158%22%20r%3D%228%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%22192%22%20cy%3D%2224%22%20r%3D%225%22%20fill%3D%22%2394a3b8%22%2F%3E%3Cdefs%3E%3CradialGradient%20id%3D%22vg%22%20cx%3D%2250%25%22%20cy%3D%2242%25%22%20r%3D%2280%25%22%3E%3Cstop%20offset%3D%220.55%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220.22%22%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22220%22%20height%3D%22220%22%20fill%3D%22url(%23vg)%22%2F%3E%3C%2Fsvg%3E" alt="Algorithms whiteboard" onerror="this.remove()"></div>
+                  <div class="tile"><img src="data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20220%20220%22%3E%3Crect%20width%3D%22220%22%20height%3D%22220%22%20fill%3D%22%23e9e2d3%22%2F%3E%3Cg%20transform%3D%22rotate(-3%20110%20110)%22%3E%3Crect%20x%3D%2240%22%20y%3D%2224%22%20width%3D%22150%22%20height%3D%22176%22%20rx%3D%223%22%20fill%3D%22%23000%22%20opacity%3D%220.12%22%2F%3E%3Crect%20x%3D%2236%22%20y%3D%2220%22%20width%3D%22150%22%20height%3D%22176%22%20rx%3D%223%22%20fill%3D%22%23fff%22%20stroke%3D%22%23d8d4cb%22%2F%3E%3Crect%20x%3D%2246%22%20y%3D%2230%22%20width%3D%22130%22%20height%3D%2215%22%20rx%3D%222%22%20fill%3D%22%231f2937%22%2F%3E%3Ctext%20x%3D%2252%22%20y%3D%2241%22%20font-family%3D%22Segoe%20UI%2C%20sans-serif%22%20font-weight%3D%22700%22%20font-size%3D%228.5%22%20fill%3D%22%23fff%22%20letter-spacing%3D%221%22%3EPAST%20PAPER%20%C2%B7%20UNIT%204%3C%2Ftext%3E%3Cg%20fill%3D%22%23c9cdd4%22%3E%3Crect%20x%3D%2246%22%20y%3D%2256%22%20width%3D%22118%22%20height%3D%225%22%20rx%3D%222.5%22%2F%3E%3Crect%20x%3D%2246%22%20y%3D%2266%22%20width%3D%2296%22%20height%3D%225%22%20rx%3D%222.5%22%2F%3E%3Crect%20x%3D%2246%22%20y%3D%2276%22%20width%3D%22110%22%20height%3D%225%22%20rx%3D%222.5%22%2F%3E%3C%2Fg%3E%3Cg%20stroke%3D%22%2364748b%22%20stroke-width%3D%221.2%22%20fill%3D%22none%22%3E%3Ccircle%20cx%3D%2252%22%20cy%3D%2298%22%20r%3D%225%22%2F%3E%3Ccircle%20cx%3D%2252%22%20cy%3D%22116%22%20r%3D%225%22%2F%3E%3Ccircle%20cx%3D%2252%22%20cy%3D%22134%22%20r%3D%225%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%2252%22%20cy%3D%22134%22%20r%3D%225%22%20fill%3D%22%2316a34a%22%2F%3E%3Cpath%20d%3D%22M49.5%20134%20l%202%202.5%20l%204%20-5%22%20stroke%3D%22%23fff%22%20stroke-width%3D%221.4%22%20fill%3D%22none%22%2F%3E%3Cg%20fill%3D%22%23c9cdd4%22%3E%3Crect%20x%3D%2262%22%20y%3D%2295%22%20width%3D%2284%22%20height%3D%225%22%20rx%3D%222.5%22%2F%3E%3Crect%20x%3D%2262%22%20y%3D%22113%22%20width%3D%2270%22%20height%3D%225%22%20rx%3D%222.5%22%2F%3E%3Crect%20x%3D%2262%22%20y%3D%22131%22%20width%3D%2290%22%20height%3D%225%22%20rx%3D%222.5%22%2F%3E%3C%2Fg%3E%3Cpath%20d%3D%22M46%20156%20q%2040%20-6%20120%200%22%20stroke%3D%22%2394a3b8%22%20stroke-width%3D%221%22%20fill%3D%22none%22%20opacity%3D%220.6%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22rotate(9%20110%20196)%22%3E%3Crect%20x%3D%2252%22%20y%3D%22190%22%20width%3D%22118%22%20height%3D%2210%22%20rx%3D%225%22%20fill%3D%22%23f59e0b%22%2F%3E%3Crect%20x%3D%2252%22%20y%3D%22190%22%20width%3D%2212%22%20height%3D%2210%22%20rx%3D%224%22%20fill%3D%22%23f472b6%22%2F%3E%3Cpath%20d%3D%22M170%20190%20l%2014%205%20l%20-14%205%20Z%22%20fill%3D%22%23e7e5e4%22%2F%3E%3Cpath%20d%3D%22M181%20193.5%20l%203%201.5%20l%20-3%201.5%20Z%22%20fill%3D%22%2357534e%22%2F%3E%3C%2Fg%3E%3Cdefs%3E%3CradialGradient%20id%3D%22vg%22%20cx%3D%2250%25%22%20cy%3D%2242%25%22%20r%3D%2280%25%22%3E%3Cstop%20offset%3D%220.55%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23000%22%20stop-opacity%3D%220.22%22%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22220%22%20height%3D%22220%22%20fill%3D%22url(%23vg)%22%2F%3E%3C%2Fsvg%3E" alt="Past paper" onerror="this.remove()"></div>
+                </div>
+                <div class="break-note">Multi-select · move · delete — folders for every subject</div>
+              </div>
+            </div>
+
+            <div class="dots" id="dots"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="api-section">
+      <h3>🔑 How to Get Your Free API Key</h3>
+      <div class="step">
+        <div class="step-num">1</div>
+        <div>Go to <strong>aistudio.google.com</strong></div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div>Click <strong>"Get API key"</strong> in the left sidebar</div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div>Click <strong>"Create API key in new project"</strong></div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div>Paste it into Fio → <strong>Settings → AI assistant</strong> (or into <code>.env</code> if you self-host):</div>
+      </div>
+      <div class="code-block">GEMINI_API_KEY=your_api_key_here</div>
+    </section>
+
+    <footer>Private by design — your data stays on your device.</footer>
+  </div>
+
+<script>
+/* ============================================================
+   0 · Solo mode — open with #solo (or ?solo) to show ONLY the
+       phone demo, full height: the perfect framing for video.
+   ============================================================ */
+const SOLO = new URLSearchParams(location.search).has('solo') || location.hash === '#solo';
+if (SOLO) document.body.classList.add('solo');
+
+/* ============================================================
+   1 · The living pixel eye — rendered from the real launcher glyph.
+   ============================================================ */
+const EYE_B64 = 'AAAAAAAAAAAAAP//////////////////////////////AAAAAAAAAAAAAAAAAAAAAAAAAP//////////////////////////////AAAAAAAAAAAAAAAAAAAAAAAAAP//////////////////////////////AAAAAAAAAAAAAAAAAAAAAP///////wAAAAAAAAAAAAAAAAAAAAD/////////AAAAAAAAAAAAAAAAAP///////wAAAAAAAAAAAAAAAAAAAAD/////////AAAAAAAAAAAAAAAAAP///////wAAAAAAAAAAAAAAAAAAAAD/////////AAAAAAAAAAAAAAAAAP///////wAAAAAAAAAAAAAAAAAAAAD/////////AAAAAAAAAAAA/////////wAAAAAAAP////////////8AAAAAAAAA////////AAAAAAAA/////////wAAAAAAAP////////////8AAAAAAAAA////////AAAAAAAA/////////wAAAAAAAP////////////8AAAAAAAAA////////AAAA/////////wAAAAAAAP///wAAAAAAAAAAAAD///8AAAAAAAAA/////////////////wAAAAAAAP///wAAAAAAAAAAAAD///8AAAAAAAAA/////////////////wAAAAAAAP///wAAAAAAAAAAAAD///8AAAAAAAAA////////////AAAAAAAAAAAAAP///wAAAAAAAAAAAAD///8AAAAAAAAAAAAA////////AAAAAAAAAAAAAP///wAAAAAAAAAAAAD///8AAAAAAAAAAAAA////////AAAAAAAAAAAAAP///wAAAAAAAAAAAAD///8AAAAAAAAAAAAA/////////////wAAAAAAAP///wAAAAAAAAAAAAD///8AAAAAAAAA/////////////////wAAAAAAAP///wAAAAAAAAAAAAD///8AAAAAAAAA/////////////////wAAAAAAAP///wAAAAAAAAAAAAD///8AAAAAAAAA/////////////////wAAAAAAAP///wAAAAAAAAAAAAD///8AAAAAAAAA////////AAAA/////////wAAAAAAAP////////////8AAAAAAAAA////////AAAAAAAA/////////wAAAAAAAP////////////8AAAAAAAAA////////AAAAAAAA/////////wAAAAAAAP////////////8AAAAAAAAA////////AAAAAAAAAAAAAP///////wAAAAAAAAAAAAAAAAAAAAD/////////AAAAAAAAAAAAAAAAAP///////wAAAAAAAAAAAAAAAAAAAAD/////////AAAAAAAAAAAAAAAAAP///////wAAAAAAAAAAAAAAAAAAAAD/////////AAAAAAAAAAAAAAAAAAAAAP//////////////////////////////AAAAAAAAAAAAAAAAAAAAAAAAAP//////////////////////////////AAAAAAAAAAAAAAAAAAAAAAAAAP//////////////////////////////AAAAAAAAAAAA';
+
+const GW = 42, GH = 29, CELL = 11;
+const EW = GW * CELL, EH = GH * CELL;
+const CVW = 480, CVH = 340;
+
+const grid = (() => {
+  const raw = atob(EYE_B64);
+  const a = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) a[i] = raw.charCodeAt(i);
+  return a;
+})();
+const lit = [];
+for (let i = 0; i < grid.length; i++) {
+  const v = grid[i];
+  if (v > 40) lit.push({ x: i % GW, y: (i / GW) | 0, a: v / 255 });
+}
+
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const eye = document.getElementById('eye');
+const ctx = eye.getContext('2d');
+const dpr = Math.min(2, devicePixelRatio || 1);
+eye.width = CVW * dpr;
+eye.height = CVH * dpr;
+ctx.scale(dpr, dpr);
+
+const oc = document.createElement('canvas');
+oc.width = EW; oc.height = EH;
+const octx = oc.getContext('2d');
+
+let blinkStart = -1, nextBlink = 1.9, blinkDur = 0.3;
+let glitchStart = -1, nextGlitch = 8, glitchDur = 0.18;
+let mx = 0, my = 0, tmx = 0, tmy = 0;
+
+const sparkles = [];
+function rollSparkles() {
+  sparkles.length = 0;
+  for (let i = 0; i < 4; i++) sparkles.push(lit[(Math.random() * lit.length) | 0]);
+}
+rollSparkles();
+let nextSparkleRoll = 0.6;
+
+function paintEye(t) {
+  octx.clearRect(0, 0, EW, EH);
+  for (const p of lit) {
+    const shimmer = 0.78 + 0.22 * Math.sin(t * 2.2 + p.x * 0.37 + p.y * 0.23);
+    octx.fillStyle = 'rgba(255,255,255,' + (p.a * shimmer).toFixed(3) + ')';
+    octx.fillRect(p.x * CELL, p.y * CELL, CELL, CELL);
+  }
+  for (const p of sparkles) {
+    octx.fillStyle = 'rgba(255,255,255,1)';
+    octx.fillRect(p.x * CELL - 1, p.y * CELL - 1, CELL + 2, CELL + 2);
+  }
+}
+
+function drawGlitchSlices(prog) {
+  const slices = 8, h = EH / slices;
+  for (let i = 0; i < slices; i++) {
+    const dx = Math.sin(i * 1.7 + performance.now() / 30) * prog * 10;
+    ctx.drawImage(oc, 0, i * h, EW, h, -EW / 2 + dx, -EH / 2 + i * h, EW, h);
+  }
+}
+
+function frame(ts) {
+  const t = ts / 1000;
+  if (t >= nextBlink) { blinkStart = t; nextBlink = t + 2.6 + Math.random() * 2.8; }
+  if (t >= nextGlitch) { glitchStart = t; nextGlitch = t + 7 + Math.random() * 5; }
+  if (t >= nextSparkleRoll) { rollSparkles(); nextSparkleRoll = t + 0.6 + Math.random() * 0.9; }
+
+  let s = 1;
+  const bd = t - blinkStart;
+  if (blinkStart >= 0 && bd < blinkDur) s = 1 - Math.sin((bd / blinkDur) * Math.PI) * 0.94;
+
+  const gd = t - glitchStart;
+  const g = glitchStart >= 0 && gd < glitchDur ? (gd / glitchDur) * (1 - gd / glitchDur) * 4 : 0;
+
+  mx += (tmx - mx) * 0.06;
+  my += (tmy - my) * 0.06;
+  const fx = Math.sin(t * 0.9) * 3 + mx * 9;
+  const fy = Math.sin(t * 1.5) * 5 + my * 5;
+
+  ctx.clearRect(0, 0, CVW, CVH);
+  paintEye(t);
+
+  ctx.save();
+  ctx.translate(CVW / 2 + fx, CVH / 2 + fy);
+  ctx.scale(1, s);
+  ctx.filter = 'blur(9px)';
+  ctx.globalAlpha = 0.45 + 0.2 * Math.sin(t * 1.2);
+  ctx.drawImage(oc, -EW / 2, -EH / 2);
+  ctx.filter = 'none';
+  ctx.globalAlpha = 1;
+  if (g > 0) drawGlitchSlices(Math.min(1, g));
+  else ctx.drawImage(oc, -EW / 2, -EH / 2);
+  ctx.restore();
+  requestAnimationFrame(frame);
+}
+
+if (reduced) {
+  paintEye(0);
+  ctx.drawImage(oc, (CVW - EW) / 2, (CVH - EH) / 2);
+} else {
+  requestAnimationFrame(frame);
+  addEventListener('pointermove', (e) => {
+    tmx = (e.clientX / innerWidth - 0.5) * 2;
+    tmy = (e.clientY / innerHeight - 0.5) * 2;
+  });
+}
+
+/* ---- Floating dust ---- */
+const dust = document.getElementById('dust');
+const dctx = dust.getContext('2d');
+let motes = [];
+function sizeDust() {
+  dust.width = innerWidth * dpr;
+  dust.height = innerHeight * dpr;
+  dctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  motes = Array.from({ length: 70 }, () => ({
+    x: Math.random() * innerWidth,
+    y: Math.random() * innerHeight,
+    r: 0.6 + Math.random() * 1.4,
+    v: 8 + Math.random() * 18,
+    ph: Math.random() * Math.PI * 2,
+    depth: 0.3 + Math.random() * 0.7,
+    mint: Math.random() < 0.15
+  }));
+}
+sizeDust();
+addEventListener('resize', sizeDust);
+
+let lastTs = 0;
+function dustFrame(ts) {
+  const dt = Math.min(0.05, (ts - lastTs) / 1000 || 0.016);
+  lastTs = ts;
+  const t = ts / 1000;
+  dctx.clearRect(0, 0, innerWidth, innerHeight);
+  for (const m of motes) {
+    m.y -= m.v * dt;
+    if (m.y < -4) { m.y = innerHeight + 4; m.x = Math.random() * innerWidth; }
+    const px = m.x + Math.sin(t * 0.7 + m.ph) * 6 + mx * m.depth * 14;
+    const py = m.y + my * m.depth * 8;
+    const a = 0.25 + 0.25 * Math.sin(t * 1.3 + m.ph);
+    dctx.fillStyle = m.mint ? 'rgba(94,234,212,' + a.toFixed(3) + ')' : 'rgba(255,255,255,' + a.toFixed(3) + ')';
+    dctx.fillRect(px, py, m.r, m.r);
+  }
+  if (!reduced) requestAnimationFrame(dustFrame);
+}
+requestAnimationFrame(dustFrame);
+
+/* ============================================================
+   2 · The app demo — six screens played in a loop (~35s total).
+   ============================================================ */
+const screens = Array.from(document.querySelectorAll('.scr'));
+const dotsWrap = document.getElementById('dots');
+screens.forEach((_, i) => {
+  const d = document.createElement('span');
+  d.className = 'dot';
+  dotsWrap.appendChild(d);
+});
+const dots = Array.from(dotsWrap.children);
+
+const SCREEN_MS = 5800;
+const TQ_TEXT = 'Why does my recursive Fibonacci blow up?';
+
+function makeRunner() {
+  const t = [];
+  return {
+    after(ms, fn) { const id = setTimeout(fn, ms); t.push(id); return id; },
+    every(ms, fn) { const id = setInterval(fn, ms); t.push(id); return id; },
+    stop() { for (const id of t) { clearTimeout(id); clearInterval(id); } t.length = 0; }
+  };
+}
+
+const enter = [
+  // 0 · Dashboard: pure CSS choreography.
+  () => makeRunner(),
+  // 1 · Settings: link → paste key → test connection → working.
+  () => {
+    const r = makeRunner();
+    const link = document.getElementById('klink');
+    const field = document.getElementById('kfield');
+    const ok = document.getElementById('kok');
+    const toast = document.getElementById('ktoast');
+    link.classList.remove('hl'); field.textContent = '';
+    ok.classList.remove('show'); toast.classList.remove('show');
+    r.after(400, () => link.classList.add('hl'));
+    let i = 0;
+    const typeKey = () => {
+      if (i < 16) { i += 1; field.textContent = '•'.repeat(i); r.after(85, typeKey); }
+    };
+    r.after(1500, typeKey);
+    r.after(3500, () => ok.classList.add('show'));
+    r.after(4700, () => toast.classList.add('show'));
+    return r;
+  },
+  // 1 · Focus: live countdown.
+  () => {
+    const r = makeRunner();
+    const el = document.getElementById('ftimer');
+    let left = 24 * 60 + 58;
+    el.textContent = '24:58';
+    r.every(1000, () => {
+      left = left > 24 * 60 + 40 ? left - 1 : 24 * 60 + 58; // loop the last 18s
+      const m = Math.floor(left / 60), s = left % 60;
+      el.textContent = String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+    });
+    return r;
+  },
+  // 2 · Habits: pure CSS.
+  () => makeRunner(),
+  // 3 · Tutor: type the question, reveal answer, slide in feedback.
+  () => {
+    const r = makeRunner();
+    const q = document.getElementById('tq');
+    const a = document.getElementById('ta');
+    const card = document.getElementById('tt');
+    q.textContent = ''; a.classList.remove('show'); card.classList.remove('show');
+    let i = 0;
+    const type = () => {
+      if (i <= TQ_TEXT.length) {
+        q.textContent = TQ_TEXT.slice(0, i);
+        i += 1;
+        r.after(26, type);
+      }
+    };
+    r.after(450, type);
+    r.after(3000, () => a.classList.add('show'));
+    r.after(3900, () => card.classList.add('show'));
+    return r;
+  },
+  // 4 · Gallery: pure CSS.
+  () => makeRunner()
+];
+
+let cur = -1, runner = null, cycle = null;
+function show(i) {
+  if (runner) runner.stop();
+  if (cur >= 0) screens[cur].classList.remove('active');
+  cur = i;
+  screens[i].classList.add('active');
+  dots.forEach((d, j) => d.classList.toggle('on', j === i));
+  runner = enter[i]();
+}
+show(0);
+if (!reduced) {
+  cycle = setInterval(() => show((cur + 1) % screens.length), SCREEN_MS);
+}
+
+/* ============================================================
+   3 · Phone scaling — the device is a fixed 320×660 canvas;
+       scale the whole thing to fit the viewport, so internals
+       always lay out identically.
+   ============================================================ */
+const stage = document.getElementById('stage');
+function fitStage() {
+  let availH, availW;
+  if (document.body.classList.contains('solo')) {
+    availH = innerHeight * 0.93;
+    availW = innerWidth * 0.94;
+  } else if (innerWidth <= 920) {
+    availH = innerHeight * 0.85;
+    availW = innerWidth - 48;
+  } else {
+    availH = innerHeight * 0.78;
+    availW = Math.min((Math.min(innerWidth, 1120) - 48) / 2, 480);
+  }
+  stage.style.zoom = Math.min(availH / 660, availW / 320, 1.45).toFixed(4);
+}
+fitStage();
+addEventListener('resize', fitStage);
+</script>
+</body>
+</html>
