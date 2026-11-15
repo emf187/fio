@@ -352,6 +352,43 @@
   body.solo .api-section, body.solo footer { display: none; }
   body.solo .wrap { padding: 24px; }
 
+  /* ---- Clip mode: eye + name -> API key steps -> platforms (#clip) ---- */
+  body.clip { overflow: hidden; height: 100vh; }
+  body.clip .split { display: block; min-height: 0; }
+  body.clip .right, body.clip footer,
+  body.clip .badge, body.clip .subtitle, body.clip .pills, body.clip .cta { display: none; }
+  body.clip .left {
+    position: fixed; inset: 0; justify-content: center;
+    opacity: 0; transition: opacity 0.9s ease; z-index: 5;
+  }
+  body.clip.go .left { opacity: 1; }
+  body.clip.p2 .left { opacity: 0; transition: opacity 0.7s ease; }
+  /* API card: recentered + scaled for the 9:16 frame; steps re-stagger on reveal */
+  body.clip .api-section {
+    position: fixed; left: 50%; top: 42%; margin: 0;
+    transform: translate(-50%, -50%) scale(1.3);
+    transform-origin: center; opacity: 0; z-index: 4;
+    animation: none;
+  }
+  body.clip.p2 .api-section { animation: clipFade 1s ease both; }
+  body.clip.p2 .api-section .step { animation: fadeInRight 0.6s ease both; }
+  body.clip.p2 .api-section .step:nth-child(2) { animation-delay: 0.35s; }
+  body.clip.p2 .api-section .step:nth-child(3) { animation-delay: 0.55s; }
+  body.clip.p2 .api-section .step:nth-child(4) { animation-delay: 0.75s; }
+  body.clip.p2 .api-section .step:nth-child(5) { animation-delay: 0.95s; }
+  /* Closing card: where to get Fio */
+  .clip-end { display: none; }
+  body.clip .clip-end {
+    display: flex; flex-direction: column; align-items: center; gap: 16px;
+    position: fixed; left: 24px; right: 24px; bottom: 96px;
+    text-align: center; opacity: 0; z-index: 6;
+  }
+  body.clip.p3 .clip-end { animation: clipFade 0.9s ease both; }
+  body.clip .clip-end .plat-row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+  body.clip .clip-end .pill { font-size: 1.05rem; padding: 11px 22px; color: var(--text); }
+  body.clip .clip-end .ios-note { color: var(--text-dim); font-size: 0.95rem; }
+  @keyframes clipFade { from { opacity: 0; } to { opacity: 1; } }
+
   @media (prefers-reduced-motion: reduce) {
     * { animation: none !important; opacity: 1 !important; transform: none !important; }
     .scr { opacity: 0 !important; }
@@ -550,6 +587,15 @@
     </section>
 
     <footer>Private by design — your data stays on your device.</footer>
+
+    <!-- Clip mode (#clip) closing card: where to get Fio -->
+    <div class="clip-end">
+      <div class="plat-row">
+        <span class="pill">🤖 Native on Android</span>
+        <span class="pill">🌐 Web app — live today</span>
+      </div>
+      <div class="ios-note">iPhone? Fio's web app installs straight from Safari — no App Store needed.</div>
+    </div>
   </div>
 
 <script>
@@ -559,6 +605,29 @@
    ============================================================ */
 const SOLO = new URLSearchParams(location.search).has('solo') || location.hash === '#solo';
 if (SOLO) document.body.classList.add('solo');
+
+/* ============================================================
+   0b · Clip mode — open with #clip (or ?clip): the short brand
+       video. The eye + name blink, then the API-key steps take
+       over, then the platforms card closes it out (~17s total).
+       window.__startClip() (re)starts the timeline; the recorder
+       calls it right before capture for deterministic timing.
+   ============================================================ */
+const CLIP = new URLSearchParams(location.search).has('clip') || location.hash === '#clip';
+if (CLIP) {
+  document.body.classList.remove('solo');
+  document.body.classList.add('clip');
+  window.__startClip = () => {
+    document.body.classList.remove('go', 'p2', 'p3');
+    void document.body.offsetWidth; // flush so animations restart cleanly
+    document.body.classList.add('go');
+    setTimeout(() => document.body.classList.add('p2'), 5000);  // API key steps
+    setTimeout(() => document.body.classList.add('p3'), 11500); // platforms card
+  };
+  setTimeout(() => {
+    if (!document.body.classList.contains('go')) window.__startClip();
+  }, 1200); // autoplay fallback when opened by hand
+}
 
 /* ============================================================
    1 · The living pixel eye — rendered from the real launcher glyph.
