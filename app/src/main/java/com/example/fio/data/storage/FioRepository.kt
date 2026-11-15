@@ -116,12 +116,19 @@ class FioRepository(private val context: Context) {
     private val _profileName = MutableStateFlow("")
     val profileName: StateFlow<String> = _profileName.asStateFlow()
 
+    /** Guided first-run setup (name + AI key) is complete. */
+    private val _onboarded = MutableStateFlow(false)
+    val onboarded: StateFlow<Boolean> = _onboarded.asStateFlow()
+
     init {
         loadData()
     }
 
     private fun loadData() {
         _profileName.value = prefs.getString("profile_name", "") ?: ""
+        // Fresh installs walk the guided setup (name + AI key); every profile
+        // that already has a name skips straight into the app.
+        _onboarded.value = prefs.getBoolean("onboarded", _profileName.value.isNotBlank())
         // Prefer the atomic state file; fall back to the legacy prefs blob.
         // If one copy is corrupt, try the other before starting empty.
         val fileJson = runCatching {
@@ -1182,6 +1189,12 @@ class FioRepository(private val context: Context) {
         _profileName.value = name.trim()
         prefs.edit().putString("profile_name", _profileName.value).apply()
         saveAll()
+    }
+
+    // --- Onboarding ---
+    fun setOnboarded(done: Boolean) {
+        _onboarded.value = done
+        prefs.edit().putBoolean("onboarded", done).apply()
     }
 
     // --- Comprehensive Export / Import (All books, documents, progress, and records) ---
