@@ -819,9 +819,10 @@ if (!reduced) {
 const stage = document.getElementById('stage');
 function fitStage() {
   let availH, availW;
-  if (document.body.classList.contains('solo')) {
-    availH = innerHeight * 0.93;
-    availW = innerWidth * 0.94;
+  const solo = document.body.classList.contains('solo');
+  if (solo) {
+    availH = innerHeight * 0.94;
+    availW = innerWidth * 0.96;
   } else if (innerWidth <= 920) {
     availH = innerHeight * 0.85;
     availW = innerWidth - 48;
@@ -829,7 +830,8 @@ function fitStage() {
     availH = innerHeight * 0.78;
     availW = Math.min((Math.min(innerWidth, 1120) - 48) / 2, 480);
   }
-  stage.style.zoom = Math.min(availH / 660, availW / 320, 1.45).toFixed(4);
+  // #solo is the video framing — let the phone fill a 9:16 shot properly.
+  stage.style.zoom = Math.min(availH / 660, availW / 320, solo ? 2.3 : 1.45).toFixed(4);
 }
 fitStage();
 addEventListener('resize', fitStage);
