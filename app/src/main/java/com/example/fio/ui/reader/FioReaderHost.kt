@@ -97,11 +97,15 @@ fun FioReaderHost(
         state = HostState.Loading
         state = withContext(Dispatchers.IO) {
             try {
-                val file = resolveDocumentFile(context, document)
+                val (file, hasOriginal) = resolveDocumentFile(context, document)
                 val uri = Uri.fromFile(file)
+                // Trust the file we actually have. Only a real original earns
+                // PDF/EPUB/FB2 rendering; a text-only fallback opens as TXT with
+                // the extracted content — never as a PDF built from a text file.
+                val displayName = if (hasOriginal) originalDisplayName(context, document, file) else file.name
                 val type = DocumentResolver.detectSupportedType(
                     null,
-                    originalDisplayName(context, document, file)
+                    displayName
                 ) ?: DocumentType.TXT
                 val readerDocument = ReaderDocument(
                     uri = uri,
@@ -557,21 +561,28 @@ private fun ReadingProgress.positionIndex(): Int = when (type) {
     else -> epubChapterIndex
 }
 
-/** Fio keeps the original imported file in filesDir/fio_doc_files/<id>.<ext>. */
-private fun resolveDocumentFile(context: Context, document: StudyDocument): File {
+/**
+ * Resolves the file to open: the original imported binary in
+ * filesDir/fio_doc_files/<id>.<ext>, or — when that file never traveled
+ * (text-JSON backups only carry extracted text) — a cache copy of the
+ * extracted text. The boolean tells the caller which one it got, so a
+ * "PDF" document without its PDF file opens as text instead of being fed
+ * to the PDF engine (which used to report it as a corrupted file).
+ */
+private fun resolveDocumentFile(context: Context, document: StudyDocument): Pair<File, Boolean> {
     val originalsDir = File(context.filesDir, "fio_doc_files")
     val original = originalsDir.listFiles()
         ?.firstOrNull { it.isFile && it.name.startsWith("${document.id}.") }
-    if (original != null) return original
+    if (original != null) return original to true
 
-    // No original stored (older imports / unsupported containers): fall back to
-    // Fio's extracted text, written once to a cache file the engines can read.
+    // No original stored (JSON backup / older imports / unsupported containers):
+    // fall back to Fio's extracted text, written once to a cache file the engines can read.
     val textDir = File(context.filesDir, "fio_reader_text").apply { mkdirs() }
     val textFile = File(textDir, "${document.id}.txt")
     if (!textFile.isFile || textFile.length() == 0L) {
         textFile.writeText(document.content)
     }
-    return textFile
+    return textFile to false
 }
 
 /** Original display name (with extension) so format detection sees e.g. ".epub". */

@@ -87,6 +87,31 @@ fun SettingsScreen(repository: FioRepository) {
     var transferSendOpen by remember { mutableStateOf(false) }
     var transferReceiveMerge by remember { mutableStateOf<Boolean?>(null) }
 
+    // JSON backup straight from a file: large profiles don't survive the
+    // clipboard — chat apps and keyboards truncate multi-MB text, and a
+    // half-arrived backup imports as a broken profile.
+    val importScope = rememberCoroutineScope()
+    val jsonImportPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            importScope.launch {
+                val json = withContext(Dispatchers.IO) {
+                    runCatching {
+                        context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                    }.getOrNull()
+                }
+                val success = json != null && repository.importFromJson(json)
+                Toast.makeText(
+                    context,
+                    if (success) "Imported successfully!" else "Could not read that backup file",
+                    Toast.LENGTH_SHORT
+                ).show()
+                if (success) importExportDialogState = null
+            }
+        }
+    }
+
     // Export / Import Dialog
     importExportDialogState?.let { mode ->
         AlertDialog(
@@ -122,6 +147,31 @@ fun SettingsScreen(repository: FioRepository) {
                             unfocusedTextColor = colors.textPrimary
                         )
                     )
+
+                    if (mode == "IMPORT") {
+                        TextButton(
+                            onClick = { jsonImportPicker.launch(arrayOf("application/json", "text/plain", "*/*")) },
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.FolderOpen,
+                                contentDescription = null,
+                                tint = colors.primary,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                "Choose a backup file (recommended — paste truncates large profiles)",
+                                color = colors.primary,
+                                fontSize = 11.sp
+                            )
+                        }
+                        Text(
+                            "A text backup carries your records and book text. PDF/EPUB page files only travel in a Device to Device transfer or a .zip backup.",
+                            color = colors.textMuted,
+                            fontSize = 10.sp
+                        )
+                    }
 
                     if (mode == "EXPORT") {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

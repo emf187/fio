@@ -76,10 +76,10 @@ internal fun SendTransferDialog(repository: FioRepository, onDismiss: () -> Unit
         TransferServer(context.applicationContext, repository) { message ->
             if (message.startsWith("Packing")) packing = true
             if (message.startsWith("Bundle ready")) packing = false
-            if (message.startsWith("Ready to be discovered") || message.startsWith("Listening on")) {
-                packing = false
-                serverActive = true
-            }
+            // The port binds before packing now, so "Listening on" only means
+            // the device is discoverable — the spinner keeps going until the
+            // bundle is actually built.
+            if (message.startsWith("Listening on")) serverActive = true
             if (message.startsWith("Could not open")) {
                 packing = false
                 serverActive = false
@@ -249,8 +249,16 @@ internal fun ReceiveTransferDialog(
         scope.launch {
             val found = mutableListOf<DiscoveredDevice>()
             withContext(Dispatchers.IO) {
-                FioTransferClient.discoverDevices(4500) { device ->
-                    if (found.none { it.ip == device.ip && it.port == device.port }) {
+                FioTransferClient.discoverDevices(8000) { device ->
+                    // A device found while still packing is updated in place the
+                    // moment its bundle is ready — no second scan needed.
+                    val existing = found.indexOfFirst { it.ip == device.ip && it.port == device.port }
+                    if (existing >= 0) {
+                        if (found[existing].ready != device.ready) {
+                            found[existing] = device
+                            devices = found.toList()
+                        }
+                    } else {
                         found += device
                         devices = found.toList()
                     }
@@ -366,14 +374,14 @@ internal fun ReceiveTransferDialog(
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(10.dp))
                                     .background(colors.surfaceElevated)
-                                    .clickable(enabled = !busy) { pick(device) }
+                                    .clickable(enabled = !busy && device.ready) { pick(device) }
                                     .padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Devices,
                                     contentDescription = null,
-                                    tint = colors.primary,
+                                    tint = if (device.ready) colors.primary else colors.textMuted,
                                     modifier = Modifier.size(20.dp)
                                 )
                                 Spacer(modifier = Modifier.width(10.dp))
@@ -385,12 +393,16 @@ internal fun ReceiveTransferDialog(
                                         fontWeight = FontWeight.SemiBold
                                     )
                                     Text(
-                                        device.summary.line(),
+                                        if (device.ready) device.summary.line() else "Still packing the profile…",
                                         color = colors.textMuted,
                                         fontSize = 10.sp
                                     )
                                 }
-                                Text("TAP", color = colors.primary, fontSize = 10.sp)
+                                Text(
+                                    if (device.ready) "TAP" else "…",
+                                    color = if (device.ready) colors.primary else colors.textMuted,
+                                    fontSize = 10.sp
+                                )
                             }
                         }
                         if (devices.isNotEmpty() || !scanning) {

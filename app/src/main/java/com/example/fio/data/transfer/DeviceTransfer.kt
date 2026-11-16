@@ -49,7 +49,9 @@ data class DiscoveredDevice(
     val ip: String,
     val port: Int,
     val summary: TransferSummary,
-    val bundleBytes: Long = 0L
+    val bundleBytes: Long = 0L,
+    /** false while the sender is still packing its bundle. */
+    val ready: Boolean = true
 ) {
     val address: String get() = "http://$ip:$port"
 }
@@ -283,16 +285,11 @@ class TransferServer(
         running = true
         acceptThread = Thread({
             try {
-                // Actually pack everything BEFORE binding, so the address the user
-                // sees is only shown once downloads can truly succeed.
+                // Bind + answer discovery BEFORE packing: a scan sent while the
+                // bundle is still being built now sees this device (marked not
+                // ready) instead of nothing, so the other side never has to
+                // re-scan. Downloads politely decline until the bundle is ready.
                 onLog("Packing full profile (books, photos, chats)…")
-                val bundle = File(context.cacheDir, "fio_transfer_bundle.zip")
-                val summary = FioBundle.build(context, repo, bundle)
-                synchronized(bundleLock) {
-                    bundleFile = bundle
-                    bundleSummary = summary
-                }
-                onLog("Bundle ready — ${summary.line()}")
 
                 var server: ServerSocket? = null
                 var port = FIO_TRANSFER_PORT
@@ -310,8 +307,21 @@ class TransferServer(
                 activePort = port
                 serverSocket = server
                 startDiscovery()
-                onLog("Ready to be discovered on this Wi-Fi — no address needed on the other device.")
-                onLog("Listening on http://${FioWifi.localIp() ?: "Lan"}:$port — keep this screen open.")
+                onLog("Listening on http://${FioWifi.localIp() ?: "Lan"}:$port — visible to the other device while it packs.")
+
+                // Pack in this thread; the discovery responder answers from its
+                // own thread meanwhile.
+                val bundle = File(context.cacheDir, "fio_transfer_bundle.zip")
+                val summary = FioBundle.build(context, repo, bundle)
+                if (!running) { // Stop was pressed while packing.
+                    runCatching { bundle.delete() }
+                    return@Thread
+                }
+                synchronized(bundleLock) {
+                    bundleFile = bundle
+                    bundleSummary = summary
+                }
+                onLog("Bundle ready — ${summary.line()}")
 
                 while (running) {
                     val client = server.accept()
@@ -363,6 +373,7 @@ class TransferServer(
                             .put("app", "Fio")
                             .put("device", repo.profileName.value.ifBlank { "Fio device" })
                             .put("port", activePort)
+                            .put("ready", summary != null)
                             .put("summary", summary?.summaryJson() ?: JSONObject())
                             .put("bundleBytes", synchronized(bundleLock) { bundleFile?.length() ?: 0L })
                         val bytes = reply.toString().toByteArray(Charsets.UTF_8)
@@ -517,10 +528,15 @@ object FioTransferClient {
     /**
      * Scans the Wi-Fi for Fio devices currently sending a profile — Xender style,
      * no address typing. Blocking for up to [timeoutMs]; call on a background thread.
+     *
+     * The discovery packet is re-broadcast every ~800ms for the whole window: one
+     * burst can be dropped by Wi-Fi power-save, and a sender that is still
+     * packing answers as "not ready" — it is re-announced through [onFound] the
+     * moment its bundle is ready, so neither side needs a second scan.
      * Devices are reported as soon as they answer.
      */
     fun discoverDevices(
-        timeoutMs: Long = 4500,
+        timeoutMs: Long = 10_000,
         onFound: (DiscoveredDevice) -> Unit
     ) {
         val socket = DatagramSocket().apply {
@@ -535,15 +551,20 @@ object FioTransferClient {
             FioWifi.localIp()?.substringBeforeLast('.')?.let { prefix ->
                 runCatching { targets += InetAddress.getByName("$prefix.255") }
             }
-            targets.distinctBy { it.hostAddress }.forEach { target ->
-                runCatching {
-                    socket.send(DatagramPacket(payload, payload.size, target, FIO_DISCOVERY_PORT))
-                }
-            }
+            val broadcastTargets = targets.distinctBy { it.hostAddress }
             val deadline = System.currentTimeMillis() + timeoutMs
-            val seen = mutableSetOf<String>()
+            var nextSend = 0L
+            val known = mutableMapOf<String, DiscoveredDevice>()
             val buffer = ByteArray(4096)
             while (System.currentTimeMillis() < deadline) {
+                if (System.currentTimeMillis() >= nextSend) {
+                    broadcastTargets.forEach { target ->
+                        runCatching {
+                            socket.send(DatagramPacket(payload, payload.size, target, FIO_DISCOVERY_PORT))
+                        }
+                    }
+                    nextSend = System.currentTimeMillis() + 800
+                }
                 try {
                     val packet = DatagramPacket(buffer, buffer.size)
                     socket.receive(packet)
@@ -553,19 +574,23 @@ object FioTransferClient {
                     if (json.optString("app") != "Fio") continue
                     val ip = packet.address?.hostAddress ?: continue
                     val port = json.optInt("port", FIO_TRANSFER_PORT)
-                    val key = "$ip:$port"
-                    if (!seen.add(key)) continue
-                    onFound(
-                        DiscoveredDevice(
-                            displayName = json.optString("device", "Fio device"),
-                            ip = ip,
-                            port = port,
-                            summary = TransferSummary.fromJson(
-                                json.optJSONObject("summary") ?: JSONObject()
-                            ),
-                            bundleBytes = json.optLong("bundleBytes", 0L)
-                        )
+                    val device = DiscoveredDevice(
+                        displayName = json.optString("device", "Fio device"),
+                        ip = ip,
+                        port = port,
+                        summary = TransferSummary.fromJson(
+                            json.optJSONObject("summary") ?: JSONObject()
+                        ),
+                        bundleBytes = json.optLong("bundleBytes", 0L),
+                        ready = json.optBoolean("ready", true)
                     )
+                    // Report a known device again only when its readiness changed,
+                    // so the UI can flip "still packing" into a real summary.
+                    val previous = known["${device.ip}:${device.port}"]
+                    if (previous == null || previous.ready != device.ready) {
+                        known["${device.ip}:${device.port}"] = device
+                        onFound(device)
+                    }
                 } catch (_: java.net.SocketTimeoutException) {
                     // keep scanning until the deadline
                 }
@@ -644,7 +669,10 @@ object FioTransferClient {
         try {
             conn.requestMethod = "GET"
             if (conn.responseCode != 200) {
-                throw IllegalArgumentException("Download failed (HTTP ${conn.responseCode}).")
+                throw IllegalArgumentException(
+                    if (conn.responseCode == 503) "The sender is still packing its profile — try again in a few seconds."
+                    else "Download failed (HTTP ${conn.responseCode})."
+                )
             }
             val total = conn.contentLengthLong
             val input = conn.inputStream
@@ -663,6 +691,14 @@ object FioTransferClient {
                     }
                 }
                 out.flush()
+            }
+            // A dropped connection must fail loudly: a truncated zip would
+            // otherwise restore only the files that happened to arrive first,
+            // which looked like "most books are corrupted" after a transfer.
+            if (total > 0 && received < total) {
+                throw IllegalArgumentException(
+                    "Download stopped early (${received / 1024} KB of ${total / 1024} KB) — keep both screens open and try again."
+                )
             }
             onProgress(received, if (total > 0) total else received)
         } finally {
