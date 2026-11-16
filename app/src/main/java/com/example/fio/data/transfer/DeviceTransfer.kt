@@ -19,6 +19,7 @@ import java.net.NetworkInterface
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.URL
+import java.util.zip.Deflater
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
@@ -187,9 +188,17 @@ object FioBundle {
             zip.closeEntry()
             // Full state JSON: profile, events/timetable/stats, courses, documents
             // (with content), notes, chats, gallery metadata, settings incl. AI key.
+            // Not pretty-printed — this is machine-to-machine, and the pretty
+            // formatting alone added ~30% to build, send and parse.
+            // Compression levels are set per entry: the state JSON is text and
+            // shrinks fine even at the fastest level, while the binaries below
+            // (PDFs, EPUBs, JPEGs) are already compressed — deflate on those was
+            // pure CPU burn that made packing take a while on budget phones.
+            zip.setLevel(Deflater.BEST_SPEED)
             zip.putNextEntry(ZipEntry(STATE))
-            zip.write(repo.exportAllToJson().toByteArray(Charsets.UTF_8))
+            zip.write(repo.exportAllToJson(pretty = false).toByteArray(Charsets.UTF_8))
             zip.closeEntry()
+            zip.setLevel(Deflater.NO_COMPRESSION)
             for ((rel, file) in packed) {
                 zip.putNextEntry(ZipEntry(FILES_PREFIX + rel))
                 file.inputStream().use { input -> input.copyTo(zip, 64 * 1024) }
@@ -206,14 +215,23 @@ object FioBundle {
      *
      * @param merge when true the incoming records merge ("newest wins") instead of
      *              replacing the device's current progress — the Sync flow.
+     * @param onStep human progress for the receiving UI ("Copying files…"), called
+     *              between the restore's internal stages so the wait is visible.
      */
-    fun restore(context: Context, repo: FioRepository, zip: File, merge: Boolean = false): TransferSummary {
+    fun restore(
+        context: Context,
+        repo: FioRepository,
+        zip: File,
+        merge: Boolean = false,
+        onStep: (String) -> Unit = {}
+    ): TransferSummary {
         val tmpRoot = File(context.cacheDir, "fio_restore_${System.currentTimeMillis()}")
         tmpRoot.mkdirs()
         try {
             var manifestObj: JSONObject? = null
             var stateText: String? = null
             val filesDirPath = context.filesDir.canonicalPath
+            onStep("Copying books & photos…")
             ZipInputStream(BufferedInputStream(FileInputStream(zip))).use { zin ->
                 var entry: ZipEntry? = zin.nextEntry
                 while (entry != null) {
@@ -238,6 +256,7 @@ object FioBundle {
             val json = stateText ?: throw IllegalStateException("Corrupt transfer bundle (no state).")
 
             // Rewrite the sender's storage root to this device's (chat/note image paths).
+            onStep("Reading the profile…")
             val oldRoot = manifest.optString("oldRoot", "")
             val rewritten = if (oldRoot.isNotBlank() &&
                 oldRoot != filesDirPath && json.contains(oldRoot)
@@ -247,6 +266,7 @@ object FioBundle {
             if (!imported) throw IllegalStateException("Could not import the received profile.")
 
             // Class-period alarms ring on this device too, from now on.
+            onStep("Finishing up…")
             runCatching { TimetableAlarms.rescheduleAll(context) }
 
             return TransferSummary.fromJson(manifest.optJSONObject("summary") ?: JSONObject())
@@ -616,7 +636,8 @@ object FioTransferClient {
         repo: FioRepository,
         base: String,
         merge: Boolean,
-        onPhase: (String, Long, Long) -> Unit
+        onPhase: (String, Long, Long) -> Unit,
+        onStep: (String) -> Unit = {}
     ): TransferSummary {
         onPhase("downloading", 0, 0)
         val zip = File(context.cacheDir, "fio_incoming_${System.currentTimeMillis()}.zip")
@@ -625,7 +646,7 @@ object FioTransferClient {
                 onPhase("downloading", received, size)
             }
             onPhase("restoring", zip.length(), zip.length())
-            return FioBundle.restore(context, repo, zip, merge)
+            return FioBundle.restore(context, repo, zip, merge, onStep)
         } finally {
             zip.delete()
         }

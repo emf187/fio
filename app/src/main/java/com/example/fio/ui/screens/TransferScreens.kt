@@ -232,6 +232,7 @@ internal fun ReceiveTransferDialog(
     var phase by remember { mutableStateOf("scanning") }
     var receivedBytes by remember { mutableStateOf(0L) }
     var totalBytes by remember { mutableStateOf(0L) }
+    var restoreStep by remember { mutableStateOf("") }
     var message by remember { mutableStateOf("") }
     var summaryLine by remember { mutableStateOf("") }
     var offerBase by remember { mutableStateOf("") }
@@ -279,6 +280,7 @@ internal fun ReceiveTransferDialog(
 
     fun startTransfer(merge: Boolean) {
         phase = "downloading"
+        restoreStep = ""
         scope.launch {
             val result = runCatching {
                 withContext(Dispatchers.IO) {
@@ -286,12 +288,14 @@ internal fun ReceiveTransferDialog(
                         context.applicationContext,
                         repository,
                         offerBase,
-                        merge = merge
-                    ) { ph, rec, tot ->
-                        receivedBytes = rec
-                        totalBytes = tot
-                        if (ph == "restoring") phase = "restoring"
-                    }
+                        merge = merge,
+                        onPhase = { ph, rec, tot ->
+                            receivedBytes = rec
+                            totalBytes = tot
+                            if (ph == "restoring") phase = "restoring"
+                        },
+                        onStep = { restoreStep = it }
+                    )
                 }
             }
             result.fold(
@@ -470,6 +474,14 @@ internal fun ReceiveTransferDialog(
                             CircularProgressIndicator(color = colors.primary, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(10.dp))
                             Text("Restoring profile…", color = colors.primary, fontSize = 12.sp)
+                        }
+                        if (restoreStep.isNotBlank()) {
+                            Text(
+                                restoreStep,
+                                color = colors.textMuted,
+                                fontSize = 11.sp,
+                                modifier = Modifier.padding(start = 28.dp)
+                            )
                         }
                     }
                     "done" -> {

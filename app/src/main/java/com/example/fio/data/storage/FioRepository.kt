@@ -1200,7 +1200,13 @@ class FioRepository(private val context: Context) {
     // --- Comprehensive Export / Import (All books, documents, progress, and records) ---
 
     /** Full, human-readable backup (includes document bodies). Used by Settings export. */
-    fun exportAllToJson(): String = buildExportJson(pretty = true, includeDocumentContents = true)
+    /**
+     * User-facing backups stay pretty-printed so the file reads well in an editor;
+     * pass pretty=false for machine-to-machine transfers (device-to-device bundles)
+     * where the formatting is pure overhead on both ends.
+     */
+    fun exportAllToJson(pretty: Boolean = true): String =
+        buildExportJson(pretty = pretty, includeDocumentContents = true)
 
     private fun buildExportJson(pretty: Boolean, includeDocumentContents: Boolean): String {
         val root = JSONObject()
